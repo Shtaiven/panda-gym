@@ -2,7 +2,7 @@ import numpy as np
 
 from panda_gym.envs.core import RobotTaskEnv
 from panda_gym.envs.robots.panda import Panda
-from panda_gym.envs.tasks.reach import Reach
+from panda_gym.envs.tasks.reach import Reach, ObstructedReach
 from panda_gym.pybullet import PyBullet
 
 
@@ -19,5 +19,5 @@ class PandaReachEnv(RobotTaskEnv):
     def __init__(self, render: bool = False, reward_type: str = "sparse", control_type: str = "ee") -> None:
         sim = PyBullet(render=render)
         robot = Panda(sim, block_gripper=True, base_position=np.array([-0.6, 0.0, 0.0]), control_type=control_type)
-        task = Reach(sim, reward_type=reward_type, get_ee_position=robot.get_ee_position)
+        task = ObstructedReach(sim, reward_type=reward_type, get_ee_position=robot.get_ee_position)
         super().__init__(robot, task)

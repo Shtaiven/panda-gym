@@ -1,4 +1,4 @@
-from typing import Any, Dict, Union
+from typing import Any, Dict, List, Union
 
 import numpy as np
 
@@ -63,3 +63,88 @@ class Reach(Task):
             return -np.array(d > self.distance_threshold, dtype=np.float64)
         else:
             return -d
+
+
+class ObstructedReach(Reach):
+    def __init__(
+        self,
+        sim,
+        get_ee_position,
+        reward_type="sparse",
+        distance_threshold=0.05,
+        goal_range=0.3,
+        obstacles_f="",
+    ) -> None:
+        super().__init__(sim, get_ee_position, reward_type, distance_threshold, goal_range)
+        self.base_position = self.get_ee_position()
+        self.obstacles = {}
+        self.obstacles_f = obstacles_f
+
+    def create_obstacle(
+        self,
+        obstacle_name: str,
+        obstacle_pos: np.ndarray,
+        obstacle_size: np.ndarray
+    ) -> None:
+        self.sim.create_box(
+            body_name=obstacle_name,
+            half_extents=obstacle_size / 2,
+            mass=0.0,
+            position=obstacle_pos,
+            specular_color=np.zeros(3),
+            rgba_color=np.array([0.95, 0.95, 0.95, 1]),
+        )
+        self.obstacles[obstacle_name] = np.concatenate((obstacle_pos, obstacle_size))
+
+    def create_obstacles_f(self, obstacles_f: str) -> None:
+        # TODO: Allow setting obstacles
+        # For now, place an obstacle that is at the midpoint of path between the start and end goal
+        if self.goal is None:
+            return
+
+        obstacle_distance = (self.goal - self.base_position) / 2.0
+        obstacle_cp = np.array(self.base_position) + obstacle_distance
+        self.create_obstacle('obstacle1', obstacle_cp, np.array([10., 10., 10.]))
+
+    def destroy_obstacles(self, obstacle_names: List[str]) -> None:
+        # TODO: destroy the obstacles listed in obstacle_names
+        for obstacle in obstacle_names:
+            self.sim.physics_client.removeBody(self.sim._bodies_idx[obstacle])
+            del self.obstacles[obstacle]
+            del self.sim._bodies_idx[obstacle]
+
+    def reset(self) -> None:
+        super().reset()
+        self.destroy_obstacles(list(self.obstacles.keys()))
+        self.create_obstacles_f(self.obstacles_f)
+
+    def get_obs(self) -> np.ndarray:
+        obs = np.array([])
+        try:
+            obs = np.concatenate(list(self.obstacles.values()))
+        except ValueError as e:
+            pass
+        return obs
+
+    # def get_obs(self, get_ee: bool=True, get_joint: bool=False) -> np.ndarray:
+    #     # TODO: Allow getting joint positions in the observation (place somewhere else?)
+    #     obs = np.array([], dtype=np.float32)
+
+    #     # end-effector position and velocity
+    #     if get_ee:
+    #         ee_position = np.array(self.get_ee_position())
+    #         ee_velocity = np.array(self.get_ee_velocity())
+    #         obs = np.concatenate((obs, ee_position, ee_velocity))
+
+    #     # joint angles and velocity
+    #     if get_joint:
+    #         joint_angle = np.array(self.get_joint_angle())
+    #         joint_velocity = np.array(self.get_joint_velocity())
+    #         obs = np.concatenate((obs, joint_angle, joint_velocity))
+
+    #     # fingers opening
+    #     if not self.block_gripper:
+    #         fingers_width = self.get_fingers_width()
+    #         obs = np.concatenate((obs, [fingers_width]))
+
+    #     return obs
