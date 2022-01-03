@@ -99,14 +99,15 @@ class ObstructedReach(Reach):
             specular_color=np.zeros(3),
             rgba_color=np.array([0.0, 0.0, 0.95, 1]),
         )
+        self.obstacles[obstacle_name] = obstacle_pos
 
     def set_obstacle_pose(self):
-        # TODO: Fix obstacle position
         # For now, place an obstacle that is at the midpoint of path between the start and end goal
         obstacle_offset = (self.goal - self.base_position) / 2.0
         obstacle_cp = self.base_position + obstacle_offset
-        print(f'obstacle_cp: {obstacle_cp}, obstacle_offset: {obstacle_offset}')
+        # print(f'obstacle_cp: {obstacle_cp}, obstacle_offset: {obstacle_offset}')
         self.sim.set_base_pose("obstacle1", obstacle_cp, np.array([0.0, 0.0, 0.0, 1.0]))
+        self.obstacles["obstacle1"] = obstacle_cp
 
     def reset(self) -> None:
         super().reset()
@@ -118,7 +119,7 @@ class ObstructedReach(Reach):
         try:
             obs = np.concatenate(list(self.obstacles.values()))
         except ValueError as e:
-            pass
+            obs = np.array([-1., -1., -1.])
         return obs
 
     # def get_obs(self, get_ee: bool=True, get_joint: bool=False) -> np.ndarray:
