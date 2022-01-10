@@ -1,4 +1,5 @@
 from typing import Any, Dict, List, Union
+from collections import deque, OrderedDict
 
 import numpy as np
 
@@ -70,19 +71,23 @@ class ObstructedReach(Reach):
         self,
         sim,
         get_ee_position,
+        get_ee_velocity,
         reward_type="sparse",
         distance_threshold=0.05,
         goal_range=0.3,
         obstacles_f="",
     ) -> None:
-        self.obstacles = {}
+        self.obstacles = OrderedDict()
         self.obstacles_f = obstacles_f
         super().__init__(sim, get_ee_position, reward_type, distance_threshold, goal_range)
-        self.base_position = self.get_ee_position()
+        self.get_ee_velocity = get_ee_velocity
+        self.start_ee_position = self.get_ee_position()
+        self.prev_distances = deque(maxlen=20)
 
     def _create_scene(self) -> None:
         super()._create_scene()
-        self.create_obstacle('obstacle1', np.array([0., 0., 0.]), np.array([0.05, 0.05, 0.05]))
+        for idx in range(6):
+            self.create_obstacle(f'obstacle{idx}', np.array([-2., -2., -2.]), np.array([0.05, 0.05, 0.05]))
 
     def create_obstacle(
         self,
@@ -90,7 +95,6 @@ class ObstructedReach(Reach):
         obstacle_pos: np.ndarray,
         obstacle_size: np.ndarray
     ) -> None:
-        # BUG: Setting the location of an obstacle within the arm causes wild behaviour. Ensure this doesn't happen!
         self.sim.create_box(
             body_name=obstacle_name,
             half_extents=obstacle_size / 2,
@@ -101,18 +105,45 @@ class ObstructedReach(Reach):
         )
         self.obstacles[obstacle_name] = obstacle_pos
 
-    def set_obstacle_pose(self):
-        # For now, place an obstacle that is at the midpoint of path between the start and end goal
-        obstacle_offset = (self.goal - self.base_position) / 2.0
-        obstacle_cp = self.base_position + obstacle_offset
-        # print(f'obstacle_cp: {obstacle_cp}, obstacle_offset: {obstacle_offset}')
-        self.sim.set_base_pose("obstacle1", obstacle_cp, np.array([0.0, 0.0, 0.0, 1.0]))
-        self.obstacles["obstacle1"] = obstacle_cp
+    def reset_obstacle_pose(self):
+        reset_pos = np.array([-2., -2., -2.])
+        reset_rot = np.array([0.0, 0.0, 0.0, 1.0])
+        for idx in range(6):
+            obstacle_name = f"obstacle{idx}"
+            self.sim.set_base_pose(obstacle_name, reset_pos, reset_rot)
+            self.obstacles[obstacle_name] = reset_pos
+
+    def _create_obstacle_L(self, idx1, idx2, thickness, arm1, arm2, position=None):
+        # TODO: use this function to construct L obstacles
+        pass
+
+    def _create_obstacle_plates(self, idx, thickness, position=None):
+        # TODO: use this fuction to construct plate obstacles
+        pass
+
+    def set_obstacle_pose(self, placement: str="inline"):
+        self.reset_obstacle_pose()
+        if placement == "inline":
+            # For now, place an obstacle that is at the midpoint of path between the start and end goal
+            obstacle_offset = (self.goal - self.start_ee_position) / 2.0
+            obstacle_cp = self.start_ee_position + obstacle_offset
+            self.sim.set_base_pose("obstacle0", obstacle_cp, np.array([0.0, 0.0, 0.0, 1.0]))
+            self.obstacles["obstacle0"] = obstacle_cp
+        elif placement == "L":
+            # Place L-shaped objects
+            self._create_obstacle_L(0, 1, 0.05, 0.1, 0.1)
+            self._create_obstacle_L(2, 3, 0.05, 0.1, 0.1)
+            self._create_obstacle_L(4, 5, 0.05, 0.1, 0.1)
+        elif placement == "plates":
+            # Place plates obstructing the end goal
+            self._create_obstacle_plates(0, 0.05)
+            self._create_obstacle_plates(1, 0.05)
 
     def reset(self) -> None:
         super().reset()
-        self.base_position = self.get_ee_position()
+        self.start_ee_position = self.get_ee_position()
         self.set_obstacle_pose()
+        self.prev_distances.clear()
 
     def get_obs(self) -> np.ndarray:
         obs = np.array([])
@@ -138,9 +169,28 @@ class ObstructedReach(Reach):
     #         joint_velocity = np.array(self.get_joint_velocity())
     #         obs = np.concatenate((obs, joint_angle, joint_velocity))
 
-    #     # fingers opening
-    #     if not self.block_gripper:
-    #         fingers_width = self.get_fingers_width()
-    #         obs = np.concatenate((obs, [fingers_width]))
-
     #     return obs
+
+    def compute_reward(self, achieved_goal, desired_goal, info: Dict[str, Any]) -> Union[np.ndarray, float]:
+        # PID-like action in the reward function
+        # TODO: PID multipliers (must be tuned)
+        P = 1.0
+        I = 1.0
+        D = 1.0
+
+        # PID components
+        d = distance(achieved_goal, desired_goal)  # euclidean distance to goal
+        v3 = self.get_ee_velocity()  # velocity as a vector
+        v = distance(v3, np.zeros_like(v3))  # scalar velocity
+        self.prev_distances.append(d)
+        integrator = np.sum(self.prev_distances)
+
+        pid_reward = -(P*d + I*integrator + D*v)
+
+        # Sparse reward
+        sparse_reward = -np.array(d > self.distance_threshold, dtype=np.float32)
+
+        # Velocity reward
+        velocity_reward = -v
+
+        return np.sum([pid_reward, sparse_reward])
