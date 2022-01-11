@@ -1,5 +1,6 @@
 from typing import Any, Dict, List, Union
 from collections import deque, OrderedDict
+import copy
 
 import numpy as np
 
@@ -87,9 +88,9 @@ class ObstructedReach(Reach):
     def _create_scene(self) -> None:
         super()._create_scene()
         for idx in range(6):
-            self.create_obstacle(f'obstacle{idx}', np.array([-2., -2., -2.]), np.array([0.05, 0.05, 0.05]))
+            self._generate_obstacle(f'obstacle{idx}', np.array([-2., -2., -2.]), np.array([0.05, 0.05, 0.05]))
 
-    def create_obstacle(
+    def _generate_obstacle(
         self,
         obstacle_name: str,
         obstacle_pos: np.ndarray,
@@ -105,17 +106,97 @@ class ObstructedReach(Reach):
         )
         self.obstacles[obstacle_name] = obstacle_pos
 
-    def reset_obstacle_pose(self):
+    def _remove_obstacle(self, obstacle_name: str) -> None:
+        self.sim.re
+        del self.obstacles[obstacle_name]
+
+    def _resize_obstacle(self, obstacle_name, dim):
+        pass
+
+    def reset_obstacle_pose(self, obstacle_name=None):
         reset_pos = np.array([-2., -2., -2.])
         reset_rot = np.array([0.0, 0.0, 0.0, 1.0])
+
+        if obstacle_name is not None:
+            self.sim.set_base_pose(obstacle_name, reset_pos, reset_rot)
+            self.obstacles[obstacle_name] = reset_pos
+            return
+
         for idx in range(6):
             obstacle_name = f"obstacle{idx}"
             self.sim.set_base_pose(obstacle_name, reset_pos, reset_rot)
             self.obstacles[obstacle_name] = reset_pos
 
-    def _create_obstacle_L(self, idx1, idx2, thickness, arm1, arm2, position=None):
-        # TODO: use this function to construct L obstacles
-        pass
+    def _create_obstacle_L(
+        self,
+        idx1: int,
+        idx2: int,
+        thickness: float,
+        arm1,
+        arm2=None,
+        position=None,
+        orientation=None
+    ) -> None:
+        r"""
+        Creates an L-shaped obstacle out of 2 blocks.
+        Blocks are constructed as follows:
+
+                       arm1[0]
+                       <----->
+                        _____
+                    ^  |\_____\ <- thickness
+                    |  ||     |_____
+            arm1[1] |  ||idx1 |______\
+                    |  ||     | idx2 | ^ arm2[1]
+                    v '\|_____|______| v
+                               <---->
+                               arm2[0]
+
+        position and orientation are taken from the bottom-left-back of the figure
+        shown (marked with an apostrophe).
+
+        Parameters:
+            idx1 (int): index of the first block to use
+            idx2 (int): index of the second block to use
+            thickness (float): overall thickness of the L
+            arm1 (list(float)[2]): length of block idx1
+            arm2 (list(float)[2]): length of block idx2 (default arm1)
+            position (list(float)[3]): position of the L (default random, based on goal_range)
+            orientation (list(float)[3]): orientation in quaternion or Euler angles (default random)
+        """
+        if len(arm1) < 2:
+            return
+
+        if arm2 is not None and len(arm2) < 2:
+            return
+
+        obs1 = f"obstacle{idx1}"
+        obs2 = f"obstacle{idx2}"
+
+        # set arm2 to arm1 if not given
+        if arm2 is None:
+            arm2 = copy.deepcopy(arm1)
+
+        # randomize position if not given
+        if position is None:
+            goal_range_diff = (self.goal_range_high - self.goal_range_low)
+            position = np.random.rand(3) * goal_range_diff - self.goal_range_low
+
+        # randomize orientation if not given
+        if orientation is None:
+            orientation = np.random.rand(3) * np.full((3,), 4*np.pi) - np.full((3,), 2*np.pi)
+
+        # TODO: delete the previous obstacles
+
+        # TODO: reshape the obstacles to the correct size
+        size1 = np.array([arm1[0], thickness, arm1[1]])
+        size2 = np.array([arm2[0], thickness, arm2[1]])
+
+        # TODO: move the obstacles to the correct position
+        position1 = position
+        position2 = position
+        self.sim.set_base_pose(obs1, position, orientation)
+        self.sim.set_base_pose(obs2, position, orientation)
 
     def _create_obstacle_plates(self, idx, thickness, position=None):
         # TODO: use this fuction to construct plate obstacles
