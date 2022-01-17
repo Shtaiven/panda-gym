@@ -71,24 +71,53 @@ class ObstructedReach(Reach):
     def __init__(
         self,
         sim,
+        robot,
         get_ee_position,
         get_ee_velocity,
         reward_type="sparse",
         distance_threshold=0.05,
         goal_range=0.3,
-        obstacles_f="",
+        obstacle_type="inline",
+        max_obstacles=6,
     ) -> None:
+        # These parameters must be places before super().__init__ because they
+        # are used in _create_scene, which is called by super().__init__
         self.obstacles = OrderedDict()
-        self.obstacles_f = obstacles_f
+        self.obstacle_type = obstacle_type
+        self.max_obstacles = max_obstacles
+
         super().__init__(sim, get_ee_position, reward_type, distance_threshold, goal_range)
+
+        # These parameters may come after super().__init__
+        self.robot = robot
         self.get_ee_velocity = get_ee_velocity
         self.start_ee_position = self.get_ee_position()
         self.prev_distances = deque(maxlen=20)
 
     def _create_scene(self) -> None:
         super()._create_scene()
-        for idx in range(6):
-            self._generate_obstacle(f'obstacle{idx}', np.array([-2., -2., -2.]), np.array([0.05, 0.05, 0.05]))
+        # Construct obstacles based on obstacle type
+        obstacle_sizes = np.full((self.max_obstacles,3), 0.05)
+        if self.obstacle_type == "L":
+            # Even obstacles are tall, odd obstacles are long in the y direction
+            for idx in range(self.max_obstacles):
+                if idx%3 == 0:
+                    obstacle_sizes[idx] = np.array([0.3, 0.1, 0.1])
+                elif idx%3 == 1:
+                    obstacle_sizes[idx] = np.array([0.1, 0.3, 0.1])
+                else:
+                    obstacle_sizes[idx] = np.array([0.1, 0.1, 0.3])
+        elif self.obstacle_type == "planes":
+            for idx in range(self.max_obstacles):
+                if idx < 2:  # Planes 0,1 tangent to x
+                    obstacle_sizes[idx] = np.array([0.1, 0.4, 0.4])
+                elif idx < 4:  # 2,3 tangent to y
+                    obstacle_sizes[idx] = np.array([0.4, 0.1, 0.4])
+                else:  # 5,6 tangent to z
+                    obstacle_sizes[idx] = np.array([0.4, 0.4, 0.1])
+
+        for idx in range(self.max_obstacles):
+            self._generate_obstacle(f'obstacle{idx}', np.array([-2., -2., -2.]), obstacle_sizes[idx])
 
     def _generate_obstacle(
         self,
@@ -104,28 +133,27 @@ class ObstructedReach(Reach):
             specular_color=np.zeros(3),
             rgba_color=np.array([0.0, 0.0, 0.95, 1]),
         )
-        self.obstacles[obstacle_name] = obstacle_pos
+        self.obstacles[obstacle_name] = np.concatenate([obstacle_pos, obstacle_size])
 
     def _remove_obstacle(self, obstacle_name: str) -> None:
-        self.sim.re
+        self.sim.remove_body(obstacle_name)
         del self.obstacles[obstacle_name]
-
-    def _resize_obstacle(self, obstacle_name, dim):
-        pass
 
     def reset_obstacle_pose(self, obstacle_name=None):
         reset_pos = np.array([-2., -2., -2.])
         reset_rot = np.array([0.0, 0.0, 0.0, 1.0])
 
         if obstacle_name is not None:
+            obs_size = self.obstacles[obstacle_name][-3:]
             self.sim.set_base_pose(obstacle_name, reset_pos, reset_rot)
-            self.obstacles[obstacle_name] = reset_pos
+            self.obstacles[obstacle_name] = np.concatenate([reset_pos, obs_size])
             return
 
         for idx in range(6):
             obstacle_name = f"obstacle{idx}"
+            obs_size = self.obstacles[obstacle_name][-3:]
             self.sim.set_base_pose(obstacle_name, reset_pos, reset_rot)
-            self.obstacles[obstacle_name] = reset_pos
+            self.obstacles[obstacle_name] = np.concatenate([reset_pos, obs_size])
 
     def _create_obstacle_L(
         self,
@@ -186,11 +214,10 @@ class ObstructedReach(Reach):
         if orientation is None:
             orientation = np.random.rand(3) * np.full((3,), 4*np.pi) - np.full((3,), 2*np.pi)
 
-        # TODO: delete the previous obstacles
-
         # TODO: reshape the obstacles to the correct size
-        size1 = np.array([arm1[0], thickness, arm1[1]])
-        size2 = np.array([arm2[0], thickness, arm2[1]])
+        # Don't reshape, only move the obstacles for now
+        # size1 = np.array([arm1[0], thickness, arm1[1]])
+        # size2 = np.array([arm2[0], thickness, arm2[1]])
 
         # TODO: move the obstacles to the correct position
         position1 = position
@@ -231,26 +258,13 @@ class ObstructedReach(Reach):
         try:
             obs = np.concatenate(list(self.obstacles.values()))
         except ValueError as e:
-            obs = np.array([-1., -1., -1.])
+            obs = np.array([-2., -2., -2., 0. ,0., 0.]*self.max_obstacles)
+
+        # Get joint angles and velocity
+        joint_angles = np.array([self.robot.get_joint_angle(joint=i) for i in range(7)])
+        joint_velocity = np.array([self.robot.get_joint_velocity(joint=i) for i in range(7)])
+        obs = np.concatenate((obs, joint_angles, joint_velocity))
         return obs
-
-    # def get_obs(self, get_ee: bool=True, get_joint: bool=False) -> np.ndarray:
-    #     # TODO: Allow getting joint positions in the observation (place somewhere else?)
-    #     obs = np.array([], dtype=np.float32)
-
-    #     # end-effector position and velocity
-    #     if get_ee:
-    #         ee_position = np.array(self.get_ee_position())
-    #         ee_velocity = np.array(self.get_ee_velocity())
-    #         obs = np.concatenate((obs, ee_position, ee_velocity))
-
-    #     # joint angles and velocity
-    #     if get_joint:
-    #         joint_angle = np.array(self.get_joint_angle())
-    #         joint_velocity = np.array(self.get_joint_velocity())
-    #         obs = np.concatenate((obs, joint_angle, joint_velocity))
-
-    #     return obs
 
     def compute_reward(self, achieved_goal, desired_goal, info: Dict[str, Any]) -> Union[np.ndarray, float]:
         # PID-like action in the reward function

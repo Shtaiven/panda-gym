@@ -556,6 +556,15 @@ class PyBullet:
         if spinning_friction is not None:
             self.set_spinning_friction(body=body_name, link=-1, spinning_friction=spinning_friction)
 
+    def remove_body(self, body_name: str) -> None:
+        """Remove a body from the simulator.
+
+        Args:
+            body_name (str): The name of the body.
+        """
+        self.physics_client.removeBody(self._bodies_idx[body_name])
+        del self._bodies_idx[body_name]
+
     def create_plane(self, z_offset: float) -> None:
         """Create a plane. (Actually, it is a thin box.)
 
