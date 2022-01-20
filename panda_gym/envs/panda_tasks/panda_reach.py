@@ -1,3 +1,4 @@
+from typing import Tuple
 import numpy as np
 
 from panda_gym.envs.core import RobotTaskEnv
@@ -16,8 +17,28 @@ class PandaReachEnv(RobotTaskEnv):
             Defaults to "ee".
     """
 
-    def __init__(self, render: bool = False, reward_type: str = "sparse", control_type: str = "ee", obstacle_type: str = "inline") -> None:
-        sim = PyBullet(render=render)
-        robot = Panda(sim, block_gripper=True, base_position=np.array([-0.6, 0.0, 0.0]), control_type=control_type)
-        task = ObstructedReach(sim, robot, reward_type=reward_type, get_ee_position=robot.get_ee_position, get_ee_velocity=robot.get_ee_velocity, obstacle_type=obstacle_type)
+    def __init__(
+        self,
+        render: bool = False,
+        reward_type: str = "sparse",
+        control_type: str = "ee",
+        obstacle_type: str = "inline",
+        n_substeps: int = 20,
+        reward_weights: Tuple[float] = (1.0, 1.0, 1.0),
+    ) -> None:
+        sim = PyBullet(render=render, n_substeps=n_substeps)
+        robot = Panda(
+            sim,
+            block_gripper=True,
+            base_position=np.array([-0.6, 0.0, 0.0]),
+            control_type=control_type,
+        )
+        task = ObstructedReach(
+            sim,
+            reward_type=reward_type,
+            get_ee_position=robot.get_ee_position,
+            get_ee_velocity=robot.get_ee_velocity,
+            obstacle_type=obstacle_type,
+            reward_weights=reward_weights,
+        )
         super().__init__(robot, task)

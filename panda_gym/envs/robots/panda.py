@@ -107,12 +107,19 @@ class Panda(PyBulletRobot):
         # end-effector position and velocity
         ee_position = np.array(self.get_ee_position())
         ee_velocity = np.array(self.get_ee_velocity())
+
+        # joint angles and velocity
+        joint_angles = np.array([self.get_joint_angle(joint=i) for i in range(7)])
+        joint_velocity = np.array(
+            [self.get_joint_velocity(joint=i) for i in range(7)]
+        )
+
         # fingers opening
         if not self.block_gripper:
             fingers_width = self.get_fingers_width()
-            obs = np.concatenate((ee_position, ee_velocity, [fingers_width]))
+            obs = np.concatenate((ee_position, ee_velocity, joint_angles, joint_velocity, [fingers_width]))
         else:
-            obs = np.concatenate((ee_position, ee_velocity))
+            obs = np.concatenate((ee_position, ee_velocity, joint_angles, joint_velocity,))
         return obs
 
     def reset(self) -> None:

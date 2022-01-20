@@ -25,7 +25,9 @@ class Reach(Task):
         self.goal_range_high = np.array([goal_range / 2, goal_range / 2, goal_range])
         with self.sim.no_rendering():
             self._create_scene()
-            self.sim.place_visualizer(target_position=np.zeros(3), distance=0.9, yaw=45, pitch=-30)
+            self.sim.place_visualizer(
+                target_position=np.zeros(3), distance=0.9, yaw=45, pitch=-30
+            )
 
     def _create_scene(self) -> None:
         self.sim.create_plane(z_offset=-0.4)
@@ -55,11 +57,15 @@ class Reach(Task):
         goal = self.np_random.uniform(self.goal_range_low, self.goal_range_high)
         return goal
 
-    def is_success(self, achieved_goal: np.ndarray, desired_goal: np.ndarray) -> Union[np.ndarray, float]:
+    def is_success(
+        self, achieved_goal: np.ndarray, desired_goal: np.ndarray
+    ) -> Union[np.ndarray, float]:
         d = distance(achieved_goal, desired_goal)
         return np.array(d < self.distance_threshold, dtype=np.float64)
 
-    def compute_reward(self, achieved_goal, desired_goal, info: Dict[str, Any]) -> Union[np.ndarray, float]:
+    def compute_reward(
+        self, achieved_goal, desired_goal, info: Dict[str, Any]
+    ) -> Union[np.ndarray, float]:
         d = distance(achieved_goal, desired_goal)
         if self.reward_type == "sparse":
             return -np.array(d > self.distance_threshold, dtype=np.float64)
@@ -71,7 +77,6 @@ class ObstructedReach(Reach):
     def __init__(
         self,
         sim,
-        robot,
         get_ee_position,
         get_ee_velocity,
         reward_type="sparse",
@@ -79,6 +84,7 @@ class ObstructedReach(Reach):
         goal_range=0.3,
         obstacle_type="inline",
         max_obstacles=6,
+        reward_weights=(1.0, 1.0, 1.0),
     ) -> None:
         # These parameters must be places before super().__init__ because they
         # are used in _create_scene, which is called by super().__init__
@@ -86,24 +92,26 @@ class ObstructedReach(Reach):
         self.obstacle_type = obstacle_type
         self.max_obstacles = max_obstacles
 
-        super().__init__(sim, get_ee_position, reward_type, distance_threshold, goal_range)
+        super().__init__(
+            sim, get_ee_position, reward_type, distance_threshold, goal_range
+        )
 
         # These parameters may come after super().__init__
-        self.robot = robot
         self.get_ee_velocity = get_ee_velocity
         self.start_ee_position = self.get_ee_position()
         self.prev_distances = deque(maxlen=20)
+        self.reward_weights = reward_weights
 
     def _create_scene(self) -> None:
         super()._create_scene()
         # Construct obstacles based on obstacle type
-        obstacle_sizes = np.full((self.max_obstacles,3), 0.05)
+        obstacle_sizes = np.full((self.max_obstacles, 3), 0.05)
         if self.obstacle_type == "L":
             # Even obstacles are tall, odd obstacles are long in the y direction
             for idx in range(self.max_obstacles):
-                if idx%3 == 0:
+                if idx % 3 == 0:
                     obstacle_sizes[idx] = np.array([0.3, 0.1, 0.1])
-                elif idx%3 == 1:
+                elif idx % 3 == 1:
                     obstacle_sizes[idx] = np.array([0.1, 0.3, 0.1])
                 else:
                     obstacle_sizes[idx] = np.array([0.1, 0.1, 0.3])
@@ -115,15 +123,17 @@ class ObstructedReach(Reach):
                     obstacle_sizes[idx] = np.array([0.4, 0.1, 0.4])
                 else:  # 5,6 tangent to z
                     obstacle_sizes[idx] = np.array([0.4, 0.4, 0.1])
+        elif self.obstacle_type == "bin":
+            # TODO: init bin obstacle
+            pass
 
         for idx in range(self.max_obstacles):
-            self._generate_obstacle(f'obstacle{idx}', np.array([-2., -2., -2.]), obstacle_sizes[idx])
+            self._generate_obstacle(
+                f"obstacle{idx}", np.array([-2.0, -2.0, -2.0]), obstacle_sizes[idx]
+            )
 
     def _generate_obstacle(
-        self,
-        obstacle_name: str,
-        obstacle_pos: np.ndarray,
-        obstacle_size: np.ndarray
+        self, obstacle_name: str, obstacle_pos: np.ndarray, obstacle_size: np.ndarray
     ) -> None:
         self.sim.create_box(
             body_name=obstacle_name,
@@ -140,7 +150,7 @@ class ObstructedReach(Reach):
         del self.obstacles[obstacle_name]
 
     def reset_obstacle_pose(self, obstacle_name=None):
-        reset_pos = np.array([-2., -2., -2.])
+        reset_pos = np.array([-2.0, -2.0, -2.0])
         reset_rot = np.array([0.0, 0.0, 0.0, 1.0])
 
         if obstacle_name is not None:
@@ -156,14 +166,7 @@ class ObstructedReach(Reach):
             self.obstacles[obstacle_name] = np.concatenate([reset_pos, obs_size])
 
     def _create_obstacle_L(
-        self,
-        idx1: int,
-        idx2: int,
-        thickness: float,
-        arm1,
-        arm2=None,
-        position=None,
-        orientation=None
+        self, idx1: int, idx2: int, position=None, orientation=None
     ) -> None:
         r"""
         Creates an L-shaped obstacle out of 2 blocks.
@@ -192,32 +195,19 @@ class ObstructedReach(Reach):
             position (list(float)[3]): position of the L (default random, based on goal_range)
             orientation (list(float)[3]): orientation in quaternion or Euler angles (default random)
         """
-        if len(arm1) < 2:
-            return
-
-        if arm2 is not None and len(arm2) < 2:
-            return
-
         obs1 = f"obstacle{idx1}"
         obs2 = f"obstacle{idx2}"
 
-        # set arm2 to arm1 if not given
-        if arm2 is None:
-            arm2 = copy.deepcopy(arm1)
-
         # randomize position if not given
         if position is None:
-            goal_range_diff = (self.goal_range_high - self.goal_range_low)
+            goal_range_diff = self.goal_range_high - self.goal_range_low
             position = np.random.rand(3) * goal_range_diff - self.goal_range_low
 
         # randomize orientation if not given
         if orientation is None:
-            orientation = np.random.rand(3) * np.full((3,), 4*np.pi) - np.full((3,), 2*np.pi)
-
-        # TODO: reshape the obstacles to the correct size
-        # Don't reshape, only move the obstacles for now
-        # size1 = np.array([arm1[0], thickness, arm1[1]])
-        # size2 = np.array([arm2[0], thickness, arm2[1]])
+            orientation = np.random.rand(3) * np.full((3,), 4 * np.pi) - np.full(
+                (3,), 2 * np.pi
+            )
 
         # TODO: move the obstacles to the correct position
         position1 = position
@@ -225,17 +215,23 @@ class ObstructedReach(Reach):
         self.sim.set_base_pose(obs1, position, orientation)
         self.sim.set_base_pose(obs2, position, orientation)
 
-    def _create_obstacle_plates(self, idx, thickness, position=None):
-        # TODO: use this fuction to construct plate obstacles
+    def _create_obstacle_plates(self, idx, normal, position=None):
+        # TODO: construct plate obstacles
         pass
 
-    def set_obstacle_pose(self, placement: str="inline"):
+    def _create_obstacle_bin(self, position=None):
+        # TODO: construct a bin obstacle that the arm can reach into
+        pass
+
+    def set_obstacle_pose(self, placement: str = "inline"):
         self.reset_obstacle_pose()
         if placement == "inline":
             # For now, place an obstacle that is at the midpoint of path between the start and end goal
             obstacle_offset = (self.goal - self.start_ee_position) / 2.0
             obstacle_cp = self.start_ee_position + obstacle_offset
-            self.sim.set_base_pose("obstacle0", obstacle_cp, np.array([0.0, 0.0, 0.0, 1.0]))
+            self.sim.set_base_pose(
+                "obstacle0", obstacle_cp, np.array([0.0, 0.0, 0.0, 1.0])
+            )
             self.obstacles["obstacle0"] = obstacle_cp
         elif placement == "L":
             # Place L-shaped objects
@@ -258,20 +254,16 @@ class ObstructedReach(Reach):
         try:
             obs = np.concatenate(list(self.obstacles.values()))
         except ValueError as e:
-            obs = np.array([-2., -2., -2., 0. ,0., 0.]*self.max_obstacles)
+            obs = np.array([-2.0, -2.0, -2.0, 0.0, 0.0, 0.0] * self.max_obstacles)
 
-        # Get joint angles and velocity
-        joint_angles = np.array([self.robot.get_joint_angle(joint=i) for i in range(7)])
-        joint_velocity = np.array([self.robot.get_joint_velocity(joint=i) for i in range(7)])
-        obs = np.concatenate((obs, joint_angles, joint_velocity))
         return obs
 
-    def compute_reward(self, achieved_goal, desired_goal, info: Dict[str, Any]) -> Union[np.ndarray, float]:
+    def compute_reward(
+        self, achieved_goal, desired_goal, info: Dict[str, Any]
+    ) -> Union[np.ndarray, float]:
         # PID-like action in the reward function
         # TODO: PID multipliers (must be tuned)
-        P = 1.0
-        I = 1.0
-        D = 1.0
+        P, I, D = self.reward_weights
 
         # PID components
         d = distance(achieved_goal, desired_goal)  # euclidean distance to goal
@@ -280,12 +272,12 @@ class ObstructedReach(Reach):
         self.prev_distances.append(d)
         integrator = np.sum(self.prev_distances)
 
-        pid_reward = -(P*d + I*integrator + D*v)
+        pid_reward = -(P * d + I * integrator + D * v)
 
         # Sparse reward
         sparse_reward = -np.array(d > self.distance_threshold, dtype=np.float32)
 
-        # Velocity reward
-        velocity_reward = -v
-
-        return np.sum([pid_reward, sparse_reward])
+        reward = sparse_reward
+        if self.reward_type == "dense":
+            reward = pid_reward
+        return reward
