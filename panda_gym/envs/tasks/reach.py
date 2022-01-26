@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Union
+from typing import Any, Dict, Tuple, Union
 from collections import deque, OrderedDict
 import copy
 
@@ -107,25 +107,11 @@ class ObstructedReach(Reach):
         # Construct obstacles based on obstacle type
         obstacle_sizes = np.full((self.max_obstacles, 3), 0.05)
         if self.obstacle_type == "L":
-            # Even obstacles are tall, odd obstacles are long in the y direction
-            for idx in range(self.max_obstacles):
-                if idx % 3 == 0:
-                    obstacle_sizes[idx] = np.array([0.3, 0.1, 0.1])
-                elif idx % 3 == 1:
-                    obstacle_sizes[idx] = np.array([0.1, 0.3, 0.1])
-                else:
-                    obstacle_sizes[idx] = np.array([0.1, 0.1, 0.3])
+            obstacle_sizes = self._create_obstacle_L()
         elif self.obstacle_type == "planes":
-            for idx in range(self.max_obstacles):
-                if idx < 2:  # Planes 0,1 tangent to x
-                    obstacle_sizes[idx] = np.array([0.1, 0.4, 0.4])
-                elif idx < 4:  # 2,3 tangent to y
-                    obstacle_sizes[idx] = np.array([0.4, 0.1, 0.4])
-                else:  # 5,6 tangent to z
-                    obstacle_sizes[idx] = np.array([0.4, 0.4, 0.1])
+            obstacle_sizes = self._create_obstacle_planes()
         elif self.obstacle_type == "bin":
-            # TODO: init bin obstacle
-            pass
+            obstacle_sizes = self._create_obstacle_bin()
 
         for idx in range(self.max_obstacles):
             self._generate_obstacle(
@@ -165,83 +151,130 @@ class ObstructedReach(Reach):
             self.sim.set_base_pose(obstacle_name, reset_pos, reset_rot)
             self.obstacles[obstacle_name] = np.concatenate([reset_pos, obs_size])
 
-    def _create_obstacle_L(
+    def _create_obstacle_L(self):
+        obstacle_sizes = np.zeros((self.max_obstacles, 3), dtype=np.float32)
+        # Even obstacles are tall, odd obstacles are long in the y direction
+        for idx in range(self.max_obstacles):
+            if idx % 3 == 0:
+                obstacle_sizes[idx] = np.array([0.3, 0.1, 0.1])
+            elif idx % 3 == 1:
+                obstacle_sizes[idx] = np.array([0.1, 0.3, 0.1])
+            else:
+                obstacle_sizes[idx] = np.array([0.1, 0.1, 0.3])
+        return obstacle_sizes
+
+    def _create_obstacle_planes(self):
+        obstacle_sizes = np.zeros((self.max_obstacles, 3), dtype=np.float32)
+        for idx in range(self.max_obstacles):
+            if idx < 2:  # Planes 0,1 tangent to x
+                obstacle_sizes[idx] = np.array([0.1, 0.4, 0.4])
+            elif idx < 4:  # 2,3 tangent to y
+                obstacle_sizes[idx] = np.array([0.4, 0.1, 0.4])
+            else:  # 5,6 tangent to z
+                obstacle_sizes[idx] = np.array([0.4, 0.4, 0.1])
+        return obstacle_sizes
+
+    def _create_obstacle_bin(self):
+        obstacle_sizes = np.zeros((self.max_obstacles, 3), dtype=np.float32)
+        # TODO: finish this
+        return obstacle_sizes
+
+    def _move_obstacle_common(
+        self, obstacle_name: str, position: np.ndarray, orientation: np.ndarray
+    ) -> None:
+        self.sim.set_base_pose(obstacle_name, position, orientation)
+        self.obstacles[obstacle_name][:3] = np.array(position)
+
+    def _move_obstacle_inline(self, idx: int) -> None:
+        # For now, place an obstacle that is at the midpoint of path between the start and end goal
+        obstacle_offset = (self.goal - self.start_ee_position) / 2.0
+        obstacle_cp = self.start_ee_position + obstacle_offset
+        self._move_obstacle_common(
+            f"obstacle{idx}", obstacle_cp, np.array([0.0, 0.0, 0.0, 1.0])
+        )
+
+    def _move_obstacle_L(
         self, idx1: int, idx2: int, position=None, orientation=None
     ) -> None:
         r"""
         Creates an L-shaped obstacle out of 2 blocks.
         Blocks are constructed as follows:
 
-                       arm1[0]
-                       <----->
                         _____
-                    ^  |\_____\ <- thickness
-                    |  ||     |_____
-            arm1[1] |  ||idx1 |______\
-                    |  ||     | idx2 | ^ arm2[1]
-                    v '\|_____|______| v
-                               <---->
-                               arm2[0]
+                       |\_____\
+                       ||idx1 |_____
+                       ||  *  |______\
+                       ||     | idx2 |
+                       \|_____|______|
 
-        position and orientation are taken from the bottom-left-back of the figure
+        position and orientation are taken relative to the center of the idx1 block
         shown (marked with an apostrophe).
 
         Parameters:
             idx1 (int): index of the first block to use
             idx2 (int): index of the second block to use
-            thickness (float): overall thickness of the L
-            arm1 (list(float)[2]): length of block idx1
-            arm2 (list(float)[2]): length of block idx2 (default arm1)
             position (list(float)[3]): position of the L (default random, based on goal_range)
             orientation (list(float)[3]): orientation in quaternion or Euler angles (default random)
         """
         obs1 = f"obstacle{idx1}"
         obs2 = f"obstacle{idx2}"
+        position1 = self.obstacles[obs1][:3]
+        position2 = self.obstacles[obs2][:3]
+        size1 = self.obstacles[obs1][-3:]
+        size2 = self.obstacles[obs2][-3:]
 
-        # randomize position if not given
-        if position is None:
+        # randomize position if not "random", or keep same if None
+        if position == "random":
             goal_range_diff = self.goal_range_high - self.goal_range_low
             position = np.random.rand(3) * goal_range_diff - self.goal_range_low
 
-        # randomize orientation if not given
-        if orientation is None:
+        # randomize orientation if "random", or keep same if None
+        if orientation == "random":
             orientation = np.random.rand(3) * np.full((3,), 4 * np.pi) - np.full(
                 (3,), 2 * np.pi
             )
 
-        # TODO: move the obstacles to the correct position
-        position1 = position
-        position2 = position
-        self.sim.set_base_pose(obs1, position, orientation)
-        self.sim.set_base_pose(obs2, position, orientation)
+        # calculation of positions of individual obstacles
+        if position is not None:
+            # TODO
+            x1, y1, z1 = position
+            l1, w1, h1 = size1
+            l2, w2, h2 = size2
+            leg_pos = np.array([x1, y1 + (w1 + w2) / 2, z1 + (-h1 + h2) / 2])
+            position1 = position
+            position2 = position + leg_pos
 
-    def _create_obstacle_plates(self, idx, normal, position=None):
-        # TODO: construct plate obstacles
+        # calculation of orientations of individual obstacles
+        if orientation is not None:
+            orientation1 = orientation
+            # TODO: Determine actual orientation of idx2
+            orientation2 = orientation
+
+        # move the obstacles to the correct position
+        self._move_obstacle_common(obs1, position1, orientation1)
+        self._move_obstacle_common(obs2, position2, orientation2)
+
+    def _move_obstacle_planes(self, idx, normal, position=None):
+        # TODO: construct planes obstacles
         pass
 
-    def _create_obstacle_bin(self, position=None):
+    def _move_obstacle_bin(self, position=None):
         # TODO: construct a bin obstacle that the arm can reach into
         pass
 
     def set_obstacle_pose(self, placement: str = "inline"):
         self.reset_obstacle_pose()
         if placement == "inline":
-            # For now, place an obstacle that is at the midpoint of path between the start and end goal
-            obstacle_offset = (self.goal - self.start_ee_position) / 2.0
-            obstacle_cp = self.start_ee_position + obstacle_offset
-            self.sim.set_base_pose(
-                "obstacle0", obstacle_cp, np.array([0.0, 0.0, 0.0, 1.0])
-            )
-            self.obstacles["obstacle0"] = obstacle_cp
+            self._move_obstacle_inline(0)
         elif placement == "L":
             # Place L-shaped objects
-            self._create_obstacle_L(0, 1, 0.05, 0.1, 0.1)
-            self._create_obstacle_L(2, 3, 0.05, 0.1, 0.1)
-            self._create_obstacle_L(4, 5, 0.05, 0.1, 0.1)
-        elif placement == "plates":
-            # Place plates obstructing the end goal
-            self._create_obstacle_plates(0, 0.05)
-            self._create_obstacle_plates(1, 0.05)
+            self._move_obstacle_L(0, 1, position="random", orientation="random")
+            self._move_obstacle_L(2, 3, position="random", orientation="random")
+            self._move_obstacle_L(4, 5, position="random", orientation="random")
+        elif placement == "planes":
+            # Place planes obstructing the end goal
+            self._move_obstacle_planes(0, 0.05)
+            self._move_obstacle_planes(1, 0.05)
 
     def reset(self) -> None:
         super().reset()
@@ -252,9 +285,12 @@ class ObstructedReach(Reach):
     def get_obs(self) -> np.ndarray:
         obs = np.array([])
         try:
-            obs = np.concatenate(list(self.obstacles.values()))
+            # TODO: sort the dictionary items by position (x, then y, then z) then by size
+            obs = np.concatenate(list(self.obstacles.values()), dtype=np.float32)
         except ValueError as e:
-            obs = np.array([-2.0, -2.0, -2.0, 0.0, 0.0, 0.0] * self.max_obstacles)
+            obs = np.array(
+                [-2.0, -2.0, -2.0, 0.0, 0.0, 0.0] * self.max_obstacles, dtype=np.float32
+            )
 
         return obs
 
@@ -280,4 +316,4 @@ class ObstructedReach(Reach):
         reward = sparse_reward
         if self.reward_type == "dense":
             reward = pid_reward
-        return reward
+        return float(reward)
