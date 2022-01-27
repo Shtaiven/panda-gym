@@ -73,6 +73,71 @@ class Reach(Task):
             return -d
 
 
+class OrientationParam(object):
+    """
+    Definitions for obstacle orientation for use by ObstructedReach.
+
+    Args:
+        axis (str): The primary axis of the L.
+        direction (int): The direction to place the leg of the L.
+        flip (bool): Whether to flip the L along its primary axis.
+    """
+    def __init__(
+        self,
+        axis: str = "z",
+        direction: int = 0,
+        flip: bool = False,
+    ) -> None:
+        self.axis = axis
+        self.direction = direction
+        self.flip = flip
+        self._axis_position = 3
+        self._axis_mask = 0b11
+        self._direction_position = 1
+        self._direction_mask = 0b11
+        self._flip_position = 0
+        self._flip_mask = 0b1
+
+    def from_bits(self, bits):
+        axis_bits = (bits >> self._axis_position) & self._axis_mask
+        self.axis = None
+        if axis_bits == 0b00:
+            self.axis = "x"
+        elif axis_bits == 0b01:
+            self.axis = "y"
+        elif axis_bits == 0b10:
+            self.axis = "z"
+
+        self.direction = (bits >> self._direction_position) & self._direction_mask
+        self.flip = bool((bits >> self._flip_position) & self._flip_mask)
+
+    def to_bits(self):
+        bits = 0
+        if self.axis == "x":
+            bits |= (0b00 << self._axis_position)
+        elif self.axis == "y":
+            bits |= (0b01 << self._axis_position)
+        elif self.axis == "z":
+            bits |= (0b10 << self._axis_position)
+
+        bits |= self.direction << self._direction_position
+        bits |= int(self.flip) << self._flip_position
+
+        return bits
+
+    def to_idxs(self, obs_type="L", max_obstacles=6, obs_id=0):
+        # TODO: Get the indices of the obstacles needed for the given orientation.
+        idxs = []
+        if obs_type == "L":
+            idx1 = ((self.to_bits() >> self._axis_position) & self._axis_mask) * (obs_id+1)
+            idx2 = (idx1 + (self.direction % 2)) % max_obstacles
+            idxs = [idx1, idx2]
+        else:
+            raise ValueError("Unknown obstacle type: {}".format(obs_type))
+
+        return idxs
+
+
 class ObstructedReach(Reach):
     def __init__(
         self,
@@ -84,7 +149,7 @@ class ObstructedReach(Reach):
         goal_range=0.3,
         obstacle_type="inline",
         max_obstacles=6,
-        reward_weights=(1.0, 1.0, 1.0),
+        reward_weights=(5.0, 5.0, 1.0),
     ) -> None:
         # These parameters must be places before super().__init__ because they
         # are used in _create_scene, which is called by super().__init__
@@ -180,8 +245,10 @@ class ObstructedReach(Reach):
         return obstacle_sizes
 
     def _move_obstacle_common(
-        self, obstacle_name: str, position: np.ndarray, orientation: np.ndarray
+        self, obstacle_name: str, position: np.ndarray, orientation: np.ndarray=None
     ) -> None:
+        if orientation is None:
+            orientation = np.array([0, 0, 0, 1], dtype=np.float32)
         self.sim.set_base_pose(obstacle_name, position, orientation)
         self.obstacles[obstacle_name][:3] = np.array(position)
 
@@ -202,9 +269,9 @@ class ObstructedReach(Reach):
 
                         _____
                        |\_____\
-                       ||idx1 |_____
-                       ||  *  |______\
-                       ||     | idx2 |
+                    ^  ||idx1 |_____
+   parallel to axis |  ||  *  |______\
+                       ||     | idx2 | -> position 0
                        \|_____|______|
 
         position and orientation are taken relative to the center of the idx1 block
@@ -224,35 +291,83 @@ class ObstructedReach(Reach):
         size2 = self.obstacles[obs2][-3:]
 
         # randomize position if not "random", or keep same if None
-        if position == "random":
+        if position is None:
             goal_range_diff = self.goal_range_high - self.goal_range_low
             position = np.random.rand(3) * goal_range_diff - self.goal_range_low
 
-        # randomize orientation if "random", or keep same if None
-        if orientation == "random":
-            orientation = np.random.rand(3) * np.full((3,), 4 * np.pi) - np.full(
-                (3,), 2 * np.pi
-            )
-
-        # calculation of positions of individual obstacles
-        if position is not None:
-            # TODO
-            x1, y1, z1 = position
-            l1, w1, h1 = size1
-            l2, w2, h2 = size2
-            leg_pos = np.array([x1, y1 + (w1 + w2) / 2, z1 + (-h1 + h2) / 2])
-            position1 = position
-            position2 = position + leg_pos
+        # Obstacle Enumerations
+        #
+        # The L obstacles can have a total of 24 configurations, 8 in each axis.
+        # 14 configurations can be stored in 5 bits, as follows:
+        #
+        # MSB || axis (4-3) | direction (2-1) | flip (0) || LSB
+        #
+        # where axis can take the following values:
+        #   axis | bits
+        #   ============
+        #   x     | 00
+        #   y     | 01
+        #   z     | 10
+        #
+        # and direction can take the following values:
+        #   direction | bits
+        #   =================
+        #   prev axis | 00
+        #   next axis | 01
+        #   prev axis reversed | 10
+        #   next axis reversed | 11
+        #
+        # and flip can take the following values:
+        #   flip | bits
+        #   =============
+        #   no flip | 0
+        #   flip    | 1
+        #
+        # where flip mirrors along the primary axis
+        #
+        # For example:
+        # The bits 01000 (8 in decimal) represents the L which extends its
+        # vertical line in the y-direction and its leg in the
+        #
+        # Alternative, use the OrientationParam object
+        # e.g. `orientation = OrientationParam("y", 1, False)`
 
         # calculation of orientations of individual obstacles
-        if orientation is not None:
-            orientation1 = orientation
-            # TODO: Determine actual orientation of idx2
-            orientation2 = orientation
+        if isinstance(orientation, OrientationParam):
+            if orientation.axis is None:
+                raise TypeError("OrientationParam.plane must not be None")
+        elif isinstance(orientation, int):
+            orientation = OrientationParam().from_bits(orientation)
+        else:
+            orientation = OrientationParam()  # default x-plane L
+
+        # TODO: Use an enumeration to do this and properly compute the correct configuration for the blocks. They can be static for this.
+        x1, y1, z1 = position
+        l1, w1, h1 = size1
+        l2, w2, h2 = size2
+        x_mod = 0
+        y_mod = 0
+        z_mod = 0
+
+        if orientation.axis == "x":
+            y_mod = (w1 + w2) / 2
+            z_mod = (-h1 + h2) / 2
+        elif orientation.axis == "y":
+            pass
+        elif orientation.axis == "z":
+            pass
+
+        leg_pos = np.array([
+            x1 + x_mod,
+            y1 + y_mod,
+            z1 + z_mod
+        ])
+        position1 = position
+        position2 = position + leg_pos
 
         # move the obstacles to the correct position
-        self._move_obstacle_common(obs1, position1, orientation1)
-        self._move_obstacle_common(obs2, position2, orientation2)
+        self._move_obstacle_common(obs1, position1)
+        self._move_obstacle_common(obs2, position2)
 
     def _move_obstacle_planes(self, idx, normal, position=None):
         # TODO: construct planes obstacles
@@ -268,9 +383,9 @@ class ObstructedReach(Reach):
             self._move_obstacle_inline(0)
         elif placement == "L":
             # Place L-shaped objects
-            self._move_obstacle_L(0, 1, position="random", orientation="random")
-            self._move_obstacle_L(2, 3, position="random", orientation="random")
-            self._move_obstacle_L(4, 5, position="random", orientation="random")
+            self._move_obstacle_L(0, 1)
+            self._move_obstacle_L(2, 3)
+            self._move_obstacle_L(4, 5)
         elif placement == "planes":
             # Place planes obstructing the end goal
             self._move_obstacle_planes(0, 0.05)
@@ -291,6 +406,8 @@ class ObstructedReach(Reach):
             obs = np.array(
                 [-2.0, -2.0, -2.0, 0.0, 0.0, 0.0] * self.max_obstacles, dtype=np.float32
             )
+
+        obs = np.concatenate([obs, self.goal])
 
         return obs
 
