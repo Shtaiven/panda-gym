@@ -1,6 +1,6 @@
+from binascii import a2b_base64
 from typing import Any, Dict, Tuple, Union
 from collections import deque, OrderedDict
-import copy
 
 import numpy as np
 
@@ -261,7 +261,7 @@ class ObstructedReach(Reach):
         )
 
     def _move_obstacle_L(
-        self, idx1: int, idx2: int, position=None, orientation=None
+        self, idx1: int, idx2: int, position=None, orientation=OrientationParam()
     ) -> None:
         r"""
         Creates an L-shaped obstacle out of 2 blocks.
@@ -332,42 +332,64 @@ class ObstructedReach(Reach):
         # Alternative, use the OrientationParam object
         # e.g. `orientation = OrientationParam("y", 1, False)`
 
-        # calculation of orientations of individual obstacles
+        # Parse orientation into an OrientationParam object if needed
         if isinstance(orientation, OrientationParam):
             if orientation.axis is None:
-                raise TypeError("OrientationParam.plane must not be None")
+                raise TypeError("OrientationParam.axis must not be None")
         elif isinstance(orientation, int):
             orientation = OrientationParam().from_bits(orientation)
         else:
             orientation = OrientationParam()  # default x-plane L
 
-        # TODO: Use an enumeration to do this and properly compute the correct configuration for the blocks. They can be static for this.
-        x1, y1, z1 = position
+        # Use the equation p2 = p1 + D.dot(theta)/2 to calculate the position of the second obstacle
+        # where p1 and p2 are points 1 and 2, respectively
+        # D is the dimensions matrix, and theta is the parameter vector
+        #
+        # if expanded, the equation is:
+        #   x2 = x1 + (theta[0]*size1[0] + theta[1]*size2[0])/2
+        #   y2 = y1 + (theta[2]*size1[1] + theta[3]*size2[1])/2
+        #   z2 = z1 + (theta[4]*size1[2] + theta[5]*size2[2])/2
+        #
+        # theta values may only be one of [-1, 0, 1]
         l1, w1, h1 = size1
         l2, w2, h2 = size2
-        x_mod = 0
-        y_mod = 0
-        z_mod = 0
+        dimensions = np.array(
+            [[l1, l2, 0, 0, 0, 0],
+            [0, 0, w1, w2, 0, 0],
+            [0, 0, 0, 0, h1, h2]],
+            dtype=np.float32
+        )
+        parameters = np.zeros((6,1), dtype=np.float32)
+        flip_matrix = np.ones((6,1), dtype=np.float32)
 
+        # define values for constructing the parameters
+        # direction_axis_switch selects between the next axis or previous axis
+        # negative_axis_switch selects between positive direction or negative direction
+        direction_axis_switch = orientation.direction & 1
+        negative_axis_switch = (orientation.direction >> 1) & 1
+        a1 = (not direction_axis_switch) * (-1 if negative_axis_switch else 1)
+        b1 = (not direction_axis_switch) * (-1 if negative_axis_switch else 1)
+        a2 = (direction_axis_switch) * (-1 if negative_axis_switch else 1)
+        b2 = (direction_axis_switch) * (-1 if negative_axis_switch else 1)
         if orientation.axis == "x":
-            y_mod = (w1 + w2) / 2
-            z_mod = (-h1 + h2) / 2
+            parameters = np.array([-1, 1, a1, b1, a2, b2], dtype=np.float32).reshape((6,1))
+            if orientation.flip:
+                flip_matrix[0:1] = -1
         elif orientation.axis == "y":
-            pass
+            parameters = np.array([a1, b1, -1, 1, a2, b2], dtype=np.float32).reshape((6,1))
+            if orientation.flip:
+                flip_matrix[2:3] = -1
         elif orientation.axis == "z":
-            pass
+            parameters = np.array([a1, b1, a2, b2, -1, 1], dtype=np.float32).reshape((6,1))
+            if orientation.flip:
+                flip_matrix[4:5] = -1
 
-        leg_pos = np.array([
-            x1 + x_mod,
-            y1 + y_mod,
-            z1 + z_mod
-        ])
-        position1 = position
-        position2 = position + leg_pos
+        position1 = position.reshape((3,1))
+        position2 = position1 + (dimensions.dot(parameters*flip_matrix)/2)
 
         # move the obstacles to the correct position
-        self._move_obstacle_common(obs1, position1)
-        self._move_obstacle_common(obs2, position2)
+        self._move_obstacle_common(obs1, position1.flatten())
+        self._move_obstacle_common(obs2, position2.flatten())
 
     def _move_obstacle_planes(self, idx, normal, position=None):
         # TODO: construct planes obstacles
@@ -383,6 +405,7 @@ class ObstructedReach(Reach):
             self._move_obstacle_inline(0)
         elif placement == "L":
             # Place L-shaped objects
+            # TODO: fix index selection
             self._move_obstacle_L(0, 1)
             self._move_obstacle_L(2, 3)
             self._move_obstacle_L(4, 5)
@@ -394,7 +417,7 @@ class ObstructedReach(Reach):
     def reset(self) -> None:
         super().reset()
         self.start_ee_position = self.get_ee_position()
-        self.set_obstacle_pose()
+        self.set_obstacle_pose(placement=self.obstacle_type)
         self.prev_distances.clear()
 
     def get_obs(self) -> np.ndarray:
