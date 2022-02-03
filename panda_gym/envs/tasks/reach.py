@@ -80,7 +80,22 @@ class OrientationParam(object):
     Args:
         axis (str): The primary axis of the L.
         direction (int): The direction to place the leg of the L.
+            Direction is determined be the lowest bit of the direction number:
+                0 for next axis (e.g. x->y, y->z, z->x)
+                1 for prev axis (e.g. x->z, y->x, z->y)
+            bit 1 determines the sign:
+                0 for positive (e.g. x)
+                1 for negative (e.g. -x)
+            for example:
+                axis = "y"
+                direction = 2
+                2 in binary is 10
+                bit 0 is 0, so we take the next axis after "y", which is "z"
+                bit 1 is 1, so we take the negative direction, so the leg will
+                    go in the negative y direction
         flip (bool): Whether to flip the L along its primary axis.
+            False will be closer to the bottom of the leg in "axis"
+            True will be closer to the top of the leg in "axis"
     """
     def __init__(
         self,
@@ -125,12 +140,27 @@ class OrientationParam(object):
 
         return bits
 
-    def to_idxs(self, obs_type="L", max_obstacles=6, obs_id=0):
+    def to_idxs(self, obs_type="L", obs_id=0):
         # TODO: Get the indices of the obstacles needed for the given orientation.
-        idxs = []
+        idxs = [0,]
         if obs_type == "L":
-            idx1 = ((self.to_bits() >> self._axis_position) & self._axis_mask) * (obs_id+1)
-            idx2 = (idx1 + (self.direction % 2)) % max_obstacles
+            # This get the the lowest bit of the direction, which defines which
+            # axis the next obstacle will be on by adding the the base axis
+            direction_mod = self.direction & 1
+
+            # Obtain the axis {x, y, z} as a number from 0-2
+            axis1 = (self.to_bits() >> self._axis_position) & self._axis_mask
+
+            # Get the number of the axis of the small leg
+            axis2 = (axis1 + direction_mod) % 2
+
+            # Get the indices of the appropriate obstacles from the axis numbers
+            # Obstacles are arranged in x-aligned, y-aligned, z-aligned, x-aligned...
+            # when they are created by _create_obstacle_L
+            #
+            # obs_id gives the set of obstacles to use, e.g. 0-2 is obs_id 0, 3-5 is obs_id 1, etc.
+            idx1 = axis1 * (obs_id+1)
+            idx2 = axis2 * (obs_id+1)
             idxs = [idx1, idx2]
         else:
             raise ValueError("Unknown obstacle type: {}".format(obs_type))
@@ -271,7 +301,7 @@ class ObstructedReach(Reach):
                        |\_____\
                     ^  ||idx1 |_____
    parallel to axis |  ||  *  |______\
-                       ||     | idx2 | -> position 0
+                       ||     | idx2 | -> direction 0
                        \|_____|______|
 
         position and orientation are taken relative to the center of the idx1 block
@@ -293,7 +323,7 @@ class ObstructedReach(Reach):
         # randomize position if not "random", or keep same if None
         if position is None:
             goal_range_diff = self.goal_range_high - self.goal_range_low
-            position = np.random.rand(3) * goal_range_diff - self.goal_range_low
+            position = (np.random.rand(3) * goal_range_diff) + self.goal_range_low
 
         # Obstacle Enumerations
         #
@@ -406,9 +436,13 @@ class ObstructedReach(Reach):
         elif placement == "L":
             # Place L-shaped objects
             # TODO: fix index selection
-            self._move_obstacle_L(0, 1)
-            self._move_obstacle_L(2, 3)
-            self._move_obstacle_L(4, 5)
+            params = OrientationParam(
+                axis="z",
+                direction=1,
+                flip=False,
+            )
+            idx1, idx2 = params.to_idxs("L")
+            self._move_obstacle_L(idx1, idx2, orientation=params)
         elif placement == "planes":
             # Place planes obstructing the end goal
             self._move_obstacle_planes(0, 0.05)
