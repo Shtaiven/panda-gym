@@ -78,8 +78,8 @@ class OrientationParam(object):
     Definitions for obstacle orientation for use by ObstructedReach.
 
     Args:
-        axis (str): The primary axis of the L.
-        direction (int): The direction to place the leg of the L.
+        axis (str): The primary axis of the obstacle (vertical leg of L, normal plane for planes).
+        direction (int): The direction to place the horizontal leg of the L.
             Direction is determined be the lowest bit of the direction number:
                 0 for next axis (e.g. x->y, y->z, z->x)
                 1 for prev axis (e.g. x->z, y->x, z->y)
@@ -152,7 +152,7 @@ class OrientationParam(object):
         if obs_type == "L":
             # This get the the lowest bit of the direction, which defines which
             # axis the next obstacle will be on by adding the the base axis
-            direction_mod = self.direction & 1
+            direction_mod = (self.direction % 2) + 1
 
             # Obtain the axis {x, y, z} as a number from 0-2
             axis1 = axis_dict[self.axis]
@@ -196,7 +196,7 @@ class OrientationParam(object):
     def randomize(self):
         """Randomize the orientation of the obstacle."""
         self.axis = np.random.choice(["x", "y", "z"])
-        self.direction = np.random.choice(list(range(4)))
+        self.direction = np.random.randint(0, 4)
         self.flip = np.random.choice([True, False])
 
         return self
@@ -465,7 +465,7 @@ class ObstructedReach(Reach):
             if orientation.flip:
                 flip_vector[0:1] = -1
         elif orientation.axis == "y":
-            parameters = np.array([a1, b1, -1, 1, a2, b2], dtype=np.float32).reshape(
+            parameters = np.array([a2, b2, -1, 1, a1, b1], dtype=np.float32).reshape(
                 (6, 1)
             )
             if orientation.flip:
@@ -539,12 +539,8 @@ class ObstructedReach(Reach):
             self._move_obstacle_inline(0)
         elif obs_type == "L":
             # Place L-shaped objects
-            # TODO: fix index selection
-            params = OrientationParam(
-                axis="z",
-                direction=np.random.randint(0, 4),
-                flip=False,
-            )
+            # FIXME: Fix offset when flip == True
+            params.flip = False
             idx1, idx2 = params.to_idxs("L")
             self._move_obstacle_L(idx1, idx2, orientation=params)
         elif obs_type == "planes":
