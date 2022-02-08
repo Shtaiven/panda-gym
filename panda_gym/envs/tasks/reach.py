@@ -182,10 +182,12 @@ class OrientationParam(object):
             idxs = [idx1, idx2]
         elif obs_type == "bin":
             # Obtain the axis {x, y, z} as a number from 0-2
-            axis1 = (self.to_bits() >> self._axis_position) & self._axis_mask
+            axis1 = axis_dict[self.axis]
 
             # Get the index of the side of the bin to ignore (1 of the planes along the axis)
-            idx_ignore = axis1 + 3
+            idx_ignore = axis1 + 3  # y-case, z-case
+            if self.axis == "x":
+                idx_ignore = 0
 
             idxs = [idx for idx in range(6) if idx != idx_ignore]
         else:
@@ -310,14 +312,16 @@ class ObstructedReach(Reach):
 
     def _create_obstacle_bin(self):
         """Create the components for a bin."""
+        bin_length, bin_width, bin_height = 0.6, 0.4, 0.325
+        bin_thickness = 0.02
         obstacle_sizes = np.zeros((self.max_obstacles, 3), dtype=np.float32)
         for idx in range(self.max_obstacles):
             if idx % 3 == 0:  # Planes 0,3 tangent to x
-                obstacle_sizes[idx] = np.array([0.05, 0.4, 0.4])
+                obstacle_sizes[idx] = np.array([bin_thickness, bin_width, bin_height])
             elif idx % 3 == 1:  # 1,4 tangent to y
-                obstacle_sizes[idx] = np.array([0.4, 0.05, 0.4])
+                obstacle_sizes[idx] = np.array([bin_length, bin_thickness, bin_height])
             else:  # 2,5 tangent to z
-                obstacle_sizes[idx] = np.array([0.4, 0.4, 0.05])
+                obstacle_sizes[idx] = np.array([bin_length, bin_width, bin_thickness])
         return obstacle_sizes
 
     def _random_goal_position(self):
@@ -520,17 +524,32 @@ class ObstructedReach(Reach):
 
     def _move_obstacle_bin(self, idxs, position=None, orientation=None):
         """Create a bin-shaped obstacle by moving its constituent parts."""
-        obs_list = [f"obstacle{i}" for i in idxs]
+                # randomize position if None
+        if position is None:
+            position = self._random_goal_position()
 
         # Parse orientation into an OrientationParam object if needed
         orientation = self._parse_orientation_params(orientation)
 
-        # TODO: Get the correct positions of all of the obstacles
-        pos_list = []
+        # Get the dimensions of the bin
+        # The bottom panel of the bin can be used to get both length (x-dim) and width (y-dim). The height can be obtained from any of the side panels (x-dim in this case)
+        bin_length, bin_width, bin_thick = self.obstacles["obstacle2"][3:6]
+        bin_height = self.obstacles["obstacle0"][5]
+        bin_dim = [bin_length, bin_width, bin_height]
 
-        # Place the obstacles to form a bin
-        for obs, pos in zip(obs_list, pos_list):
-            self._move_obstacle_common(obs, pos)
+        # Calculate the offset of all of the bin's size
+        # and move them to the correct position
+        for obs_idx in idxs:
+            obs_normal_axis = obs_idx % 3  # 0, 1, or 2 depending on the short side of the obstacle as defined in _create_obstacle_bin
+            obs_offset = np.zeros(3)
+            obs_offset[obs_normal_axis] = (bin_dim[obs_normal_axis] + bin_thick) / 2
+
+            # Add or subtract the offset depending on the index for either side of the obstacle
+            obs_name = f"obstacle{obs_idx}"
+            if obs_idx < 3:
+                self._move_obstacle_common(obs_name, position - obs_offset)
+            else:
+                self._move_obstacle_common(obs_name, position + obs_offset)
 
     def set_obstacle_pose(self, obs_type: str = "inline"):
         self.reset_obstacle_pose()
@@ -544,19 +563,14 @@ class ObstructedReach(Reach):
             idx1, idx2 = params.to_idxs("L")
             self._move_obstacle_L(idx1, idx2, orientation=params)
         elif obs_type == "planes":
-            # TODO: Place planes obstructing the end goal
-            params = OrientationParam(
-                axis=np.random.choice(["x", "z"]),
-                flip=np.random.choice([True, False]),
-            )
+            # Place planes obstructing the end goal
+            params.axis = np.random.choice(["x", "z"])
+            params.flip = np.random.choice([True, False])
             idx1, idx2 = params.to_idxs("planes")
             self._move_obstacle_planes(idx1, idx2, orientation=params)
         elif obs_type == "bin":
             # TODO: Place bin-shaped obstacle
-            params = OrientationParam(
-                axis="z",
-                flip=False,
-            )
+            params.axis = np.random.choice(["x", "z"])
             idxs = params.to_idxs("bin")
             self._move_obstacle_bin(idxs, orientation=params)
 
