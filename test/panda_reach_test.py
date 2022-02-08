@@ -4,7 +4,7 @@ import panda_gym
 
 
 def main():
-    env = gym.make('PandaReach-v2', render=True, control_type='joints', obstacle_type="bin", reward_type="dense")
+    env = gym.make('PandaReach-v2', render=True, control_type='joints', obstacle_type="bin", reward_type="pid")
 
     for _ in range(10):
         obs, done = env.reset(), False

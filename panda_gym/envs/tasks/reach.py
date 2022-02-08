@@ -210,7 +210,7 @@ class ObstructedReach(Reach):
         sim,
         get_ee_position,
         get_ee_velocity,
-        reward_type="sparse",
+        reward_type="pid",
         distance_threshold=0.05,
         goal_range=0.3,
         obstacle_type="inline",
@@ -226,6 +226,10 @@ class ObstructedReach(Reach):
         super().__init__(
             sim, get_ee_position, reward_type, distance_threshold, goal_range
         )
+
+        # TODO: Extend the goal range to accomodate the new table
+        # self.goal_range_high = ...
+        # self.goal_range_low = ...
 
         # These parameters may come after super().__init__
         self.get_ee_velocity = get_ee_velocity
@@ -646,6 +650,9 @@ class ObstructedReach(Reach):
         sparse_reward = -np.array(d > self.distance_threshold, dtype=np.float32)
 
         reward = sparse_reward
-        if self.reward_type == "dense":
+        if self.reward_type == "pid":
             reward = pid_reward
+        elif self.reward_type == "dense":
+            reward = -d
+
         return float(reward)
