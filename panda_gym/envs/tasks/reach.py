@@ -144,7 +144,7 @@ class OrientationParam(object):
         return bits
 
     def to_idxs(self, obs_type="L", obs_id=0):
-        # TODO: Get the indices of the obstacles needed for the given orientation.
+        # Get the indices of the obstacles needed for the given orientation.
         idxs = [
             0,
         ]
@@ -287,7 +287,7 @@ class ObstructedReach(Reach):
 
     def _create_obstacle_L(self):
         """Create the components of an L-shaped obstacle."""
-        obstacle_sizes = np.zeros((self.max_obstacles, 3), dtype=np.float32)
+        obstacle_sizes = np.zeros((self.max_obstacles, 3))
         # Even obstacles are tall, odd obstacles are long in the y direction
         for idx in range(self.max_obstacles):
             if idx % 3 == 0:  # Obstacle along x axis
@@ -300,7 +300,7 @@ class ObstructedReach(Reach):
 
     def _create_obstacle_planes(self):
         """Create the components for a set of planes."""
-        obstacle_sizes = np.zeros((self.max_obstacles, 3), dtype=np.float32)
+        obstacle_sizes = np.zeros((self.max_obstacles, 3))
         for idx in range(self.max_obstacles):
             if idx % 3 == 0:  # Planes 0,3 tangent to x
                 obstacle_sizes[idx] = np.array([0.025, 0.4, 0.4])
@@ -314,7 +314,7 @@ class ObstructedReach(Reach):
         """Create the components for a bin."""
         bin_length, bin_width, bin_height = 0.6, 0.4, 0.325
         bin_thickness = 0.02
-        obstacle_sizes = np.zeros((self.max_obstacles, 3), dtype=np.float32)
+        obstacle_sizes = np.zeros((self.max_obstacles, 3))
         for idx in range(self.max_obstacles):
             if idx % 3 == 0:  # Planes 0,3 tangent to x
                 obstacle_sizes[idx] = np.array([bin_thickness, bin_width, bin_height])
@@ -347,7 +347,7 @@ class ObstructedReach(Reach):
     ) -> None:
         """Move an obstacle in the pybullet scene."""
         if orientation is None:
-            orientation = np.array([0, 0, 0, 1], dtype=np.float32)
+            orientation = np.array([0, 0, 0, 1])
         self.sim.set_base_pose(obstacle_name, position, orientation)
         self.obstacles[obstacle_name][:3] = np.array(position)
 
@@ -448,10 +448,9 @@ class ObstructedReach(Reach):
         l2, w2, h2 = size2
         dimensions = np.array(
             [[l1, l2, 0, 0, 0, 0], [0, 0, w1, w2, 0, 0], [0, 0, 0, 0, h1, h2]],
-            dtype=np.float32,
         )
-        parameters = np.zeros((6, 1), dtype=np.float32)
-        flip_vector = np.ones((6, 1), dtype=np.float32)
+        parameters = np.zeros((6, 1))
+        flip_vector = np.ones((6, 1))
 
         # define values for constructing the parameters
         # direction_axis_switch selects between the next axis or previous axis
@@ -463,21 +462,15 @@ class ObstructedReach(Reach):
         a2 = (direction_axis_switch) * (-1 if negative_axis_switch else 1)
         b2 = (direction_axis_switch) * (-1 if negative_axis_switch else 1)
         if orientation.axis == "x":
-            parameters = np.array([-1, 1, a1, b1, a2, b2], dtype=np.float32).reshape(
-                (6, 1)
-            )
+            parameters = np.array([-1, 1, a1, b1, a2, b2]).reshape((6, 1))
             if orientation.flip:
                 flip_vector[0:1] = -1
         elif orientation.axis == "y":
-            parameters = np.array([a2, b2, -1, 1, a1, b1], dtype=np.float32).reshape(
-                (6, 1)
-            )
+            parameters = np.array([a2, b2, -1, 1, a1, b1]).reshape((6, 1))
             if orientation.flip:
                 flip_vector[2:3] = -1
         elif orientation.axis == "z":
-            parameters = np.array([a1, b1, a2, b2, -1, 1], dtype=np.float32).reshape(
-                (6, 1)
-            )
+            parameters = np.array([a1, b1, a2, b2, -1, 1]).reshape((6, 1))
             if orientation.flip:
                 flip_vector[4:5] = -1
 
@@ -506,7 +499,7 @@ class ObstructedReach(Reach):
         if spacing is None:
             spacing = 0.2
 
-        # TODO: Calculate positions for the planes
+        # Calculate positions for the planes
         axis_dict = {"x": 0, "y": 1, "z": 2}
         axis_index = (axis_dict[orientation.axis] + 1 + int(orientation.flip)) % 3
         obs1_dim = self.obstacles[obs1][axis_index + 3]
@@ -524,7 +517,7 @@ class ObstructedReach(Reach):
 
     def _move_obstacle_bin(self, idxs, position=None, orientation=None):
         """Create a bin-shaped obstacle by moving its constituent parts."""
-                # randomize position if None
+        # randomize position if None
         if position is None:
             position = self._random_goal_position()
 
@@ -540,7 +533,9 @@ class ObstructedReach(Reach):
         # Calculate the offset of all of the bin's size
         # and move them to the correct position
         for obs_idx in idxs:
-            obs_normal_axis = obs_idx % 3  # 0, 1, or 2 depending on the short side of the obstacle as defined in _create_obstacle_bin
+            obs_normal_axis = (
+                obs_idx % 3
+            )  # 0, 1, or 2 depending on the short side of the obstacle as defined in _create_obstacle_bin
             obs_offset = np.zeros(3)
             obs_offset[obs_normal_axis] = (bin_dim[obs_normal_axis] + bin_thick) / 2
 
@@ -569,7 +564,7 @@ class ObstructedReach(Reach):
             idx1, idx2 = params.to_idxs("planes")
             self._move_obstacle_planes(idx1, idx2, orientation=params)
         elif obs_type == "bin":
-            # TODO: Place bin-shaped obstacle
+            # Place bin-shaped obstacle
             params.axis = np.random.choice(["x", "z"])
             idxs = params.to_idxs("bin")
             self._move_obstacle_bin(idxs, orientation=params)
@@ -580,17 +575,23 @@ class ObstructedReach(Reach):
         self.set_obstacle_pose(obs_type=self.obstacle_type)
         self.prev_distances.clear()
 
-    def get_obs(self) -> np.ndarray:
-        obs = np.array([])
-        try:
-            # TODO: sort the dictionary items by position (x, then y, then z) then by size
-            obs = np.concatenate(list(self.obstacles.values()), dtype=np.float32)
-        except ValueError as e:
-            obs = np.array(
-                [-2.0, -2.0, -2.0, 0.0, 0.0, 0.0] * self.max_obstacles, dtype=np.float32
-            )
+    def _sort_obstacles(self):
+        """Sort the obstacles by their position and dimension."""
+        obstacles = list(self.obstacles.values())
+        n_sort = len(obstacles[0])
+        for i in reversed(range(n_sort)):
+            obstacles.sort(key=lambda x: x[i])
 
-        obs = np.concatenate([obs, self.goal])
+        return obstacles
+
+    def get_obs(self) -> np.ndarray:
+        obs = self._sort_obstacles()
+        try:
+            obs = np.concatenate(obs)
+        except ValueError as e:
+            obs = np.array([-2.0, -2.0, -2.0, 0.0, 0.0, 0.0] * self.max_obstacles)
+
+        obs = np.concatenate([obs, self.goal], dtype=np.float32)
 
         return obs
 
