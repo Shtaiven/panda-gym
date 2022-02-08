@@ -234,7 +234,22 @@ class ObstructedReach(Reach):
         self.reward_weights = reward_weights
 
     def _create_scene(self) -> None:
-        super()._create_scene()
+        # The plane represents the floor
+        self.sim.create_plane(z_offset=-0.4)
+
+        # Table edge must reach -0.85 to be under the arm
+        self.sim.create_table(length=0.4, width=0.4, height=0.4, x_offset=-0.65)
+
+        # Create the end goal sphere
+        self.sim.create_sphere(
+            body_name="target",
+            radius=0.02,
+            mass=0.0,
+            ghost=True,
+            position=np.zeros(3),
+            rgba_color=np.array([0.1, 0.9, 0.1, 0.3]),
+        )
+
         # Construct obstacles based on obstacle type
         obstacle_sizes = np.full((self.max_obstacles, 3), 0.05)
         if self.obstacle_type == "L":
@@ -288,26 +303,43 @@ class ObstructedReach(Reach):
     def _create_obstacle_L(self):
         """Create the components of an L-shaped obstacle."""
         obstacle_sizes = np.zeros((self.max_obstacles, 3))
+        leg_length = 0.3
+        leg_thickness = 0.1
+
         # Even obstacles are tall, odd obstacles are long in the y direction
         for idx in range(self.max_obstacles):
             if idx % 3 == 0:  # Obstacle along x axis
-                obstacle_sizes[idx] = np.array([0.3, 0.1, 0.1])
+                obstacle_sizes[idx] = np.array(
+                    [leg_length, leg_thickness, leg_thickness]
+                )
             elif idx % 3 == 1:  # Obstacle along y axis
-                obstacle_sizes[idx] = np.array([0.1, 0.3, 0.1])
+                obstacle_sizes[idx] = np.array(
+                    [leg_thickness, leg_length, leg_thickness]
+                )
             else:  # Obstacle along z axis
-                obstacle_sizes[idx] = np.array([0.1, 0.1, 0.3])
+                obstacle_sizes[idx] = np.array(
+                    [leg_thickness, leg_thickness, leg_length]
+                )
         return obstacle_sizes
 
     def _create_obstacle_planes(self):
         """Create the components for a set of planes."""
         obstacle_sizes = np.zeros((self.max_obstacles, 3))
+        plane_sides = 0.4
+        plane_thickness = 0.025
         for idx in range(self.max_obstacles):
             if idx % 3 == 0:  # Planes 0,3 tangent to x
-                obstacle_sizes[idx] = np.array([0.025, 0.4, 0.4])
+                obstacle_sizes[idx] = np.array(
+                    [plane_thickness, plane_sides, plane_sides]
+                )
             elif idx % 3 == 1:  # 1,4 tangent to y
-                obstacle_sizes[idx] = np.array([0.4, 0.025, 0.4])
+                obstacle_sizes[idx] = np.array(
+                    [plane_sides, plane_thickness, plane_sides]
+                )
             else:  # 2,5 tangent to z
-                obstacle_sizes[idx] = np.array([0.4, 0.4, 0.025])
+                obstacle_sizes[idx] = np.array(
+                    [plane_sides, plane_sides, plane_thickness]
+                )
         return obstacle_sizes
 
     def _create_obstacle_bin(self):
