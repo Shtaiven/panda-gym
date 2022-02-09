@@ -8,7 +8,7 @@ def main():
         "PandaReach-v2",
         render=True,
         control_type="joints",
-        obstacle_type="L",
+        obstacle_type="bin",
         reward_type="pid",
         visual_debug=True,
     )
