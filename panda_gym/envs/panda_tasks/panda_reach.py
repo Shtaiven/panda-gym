@@ -25,6 +25,7 @@ class PandaReachEnv(RobotTaskEnv):
         obstacle_type: str = "inline",
         n_substeps: int = 20,
         reward_weights: Tuple[float] = (1.0, 1.0, 1.0),
+        visual_debug: bool = False,
     ) -> None:
         sim = PyBullet(render=render, n_substeps=n_substeps)
         robot = Panda(
@@ -40,5 +41,6 @@ class PandaReachEnv(RobotTaskEnv):
             get_ee_velocity=robot.get_ee_velocity,
             obstacle_type=obstacle_type,
             reward_weights=reward_weights,
+            visual_debug=visual_debug,
         )
         super().__init__(robot, task)

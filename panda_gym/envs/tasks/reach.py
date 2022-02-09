@@ -211,33 +211,59 @@ class ObstructedReach(Reach):
         get_ee_position,
         get_ee_velocity,
         reward_type="pid",
-        distance_threshold=0.05,
+        distance_threshold=0.01,
         goal_range=0.3,
+        goal_range_low=None,
+        goal_range_high=None,
         obstacle_type="inline",
         max_obstacles=6,
         reward_weights=(5.0, 5.0, 1.0),
+        visual_debug=False,
+        prev_distance_len=None,
     ) -> None:
         # These parameters must be places before super().__init__ because they
         # are used in _create_scene, which is called by super().__init__
+        super(Reach, self).__init__(sim)
         self.obstacles = OrderedDict()
         self.obstacle_type = obstacle_type
         self.max_obstacles = max_obstacles
-
-        super().__init__(
-            sim, get_ee_position, reward_type, distance_threshold, goal_range
-        )
-
-        # TODO: Extend the goal range to accomodate the new table
-        # self.goal_range_high = ...
-        # self.goal_range_low = ...
-
-        # These parameters may come after super().__init__
+        self.visual_debug = visual_debug
+        self.reward_type = reward_type
+        self.distance_threshold = distance_threshold
+        self.get_ee_position = get_ee_position
         self.get_ee_velocity = get_ee_velocity
         self.start_ee_position = self.get_ee_position()
-        self.prev_distances = deque(maxlen=20)
+        self.prev_distances = deque(maxlen=prev_distance_len)
         self.reward_weights = reward_weights
 
+        # TODO: Extend the goal range to accommodate the new short table
+        self.goal_range_low = np.array([-goal_range / 2, -goal_range / 2, -goal_range])
+        if goal_range_low is not None:
+            self.goal_range_low = goal_range_low
+        self.goal_range_high = np.array([goal_range / 2, goal_range / 2, goal_range])
+        if goal_range_high is not None:
+            self.goal_range_high = goal_range_high
+
+        # Create the scene
+        with self.sim.no_rendering():
+            self._create_scene()
+            self.sim.place_visualizer(
+                target_position=np.zeros(3), distance=0.9, yaw=45, pitch=-30
+            )
+
     def _create_scene(self) -> None:
+        # draw the goal range if visual debugging is enabled
+        if self.visual_debug:
+            half_extents = (self.goal_range_high - self.goal_range_low) / 2
+            self.sim.create_box(
+                body_name="goal_range",
+                half_extents=half_extents,
+                position=self.goal_range_low + half_extents,
+                rgba_color=np.array([1, 0, 0, 0.3]),
+                ghost=True,
+                mass=0.0,
+            )
+
         # The plane represents the floor
         self.sim.create_plane(z_offset=-0.4)
 
