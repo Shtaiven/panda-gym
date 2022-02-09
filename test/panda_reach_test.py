@@ -4,7 +4,14 @@ import panda_gym
 
 
 def main():
-    env = gym.make('PandaReach-v2', render=True, control_type='joints', obstacle_type="L", reward_type="pid", visual_debug=True)
+    env = gym.make(
+        "PandaReach-v2",
+        render=True,
+        control_type="joints",
+        obstacle_type="L",
+        reward_type="pid",
+        visual_debug=True,
+    )
 
     for _ in range(10):
         obs, done = env.reset(), False
@@ -14,5 +21,5 @@ def main():
             time.sleep(0.1)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

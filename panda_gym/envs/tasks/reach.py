@@ -212,7 +212,7 @@ class ObstructedReach(Reach):
         get_ee_velocity,
         reward_type="pid",
         distance_threshold=0.01,
-        goal_range=0.3,
+        goal_range=0.6,
         goal_range_low=None,
         goal_range_high=None,
         obstacle_type="inline",
@@ -237,12 +237,18 @@ class ObstructedReach(Reach):
         self.reward_weights = reward_weights
 
         # TODO: Extend the goal range to accommodate the new short table
+        # goal_range_low and goal_range_high will supercede any value
+        # given for goal_range
         self.goal_range_low = np.array([-goal_range / 2, -goal_range / 2, -goal_range])
         if goal_range_low is not None:
             self.goal_range_low = goal_range_low
         self.goal_range_high = np.array([goal_range / 2, goal_range / 2, goal_range])
         if goal_range_high is not None:
             self.goal_range_high = goal_range_high
+
+        # Don't allow the goal_range to clip the floor at -0.4
+        if self.goal_range_low[2] < -0.4:
+            self.goal_range_low[2] = -0.4
 
         # Create the scene
         with self.sim.no_rendering():
@@ -374,7 +380,8 @@ class ObstructedReach(Reach):
 
     def _create_obstacle_bin(self):
         """Create the components for a bin."""
-        bin_length, bin_width, bin_height = 0.6, 0.4, 0.325
+        # bin dimensions based on this product: https://www.engelslogistiek.nl/nl_en/catalog/product/view/id/3640/s/en-6422-1-7-1-stk/category/381/
+        bin_length, bin_width, bin_height = 0.6, 0.4, 0.22
         bin_thickness = 0.02
         obstacle_sizes = np.zeros((self.max_obstacles, 3))
         for idx in range(self.max_obstacles):
