@@ -615,9 +615,61 @@ class ObstructedReach(Reach):
             else:
                 self._move_obstacle_common(obs_name, position + obs_offset)
 
-    def set_obstacle_pose(self, obs_type: str = "inline"):
+    def _get_obstacle_position_from_goal(
+        self, goal_position, obstacle_type, orientation_params
+    ):
+        """
+        Get the obstacle position from the goal position.
+
+        This function is used to get the obstacle position from the goal position.
+        The obstacle position is calculated by taking the goal position, obstacle type,
+        and orientation parameters and calculating a suitable position from them.
+        """
+        # Parse orientation into an OrientationParam object if needed
+        orientation = self._parse_orientation_params(orientation_params)
+
+        # TODO: Get the obstacle's offset from the goal position
+        obstacle_offset = np.zeros_like(goal_position)
+        if obstacle_type == "L":
+            # The L's position is calculated from the center of the first leg.
+            # Place the goal in between the legs by finding the midpoint of the
+            # length of the second leg and either adding or subtracting it
+            # based on the direction parameter
+            idx1, idx2 = orientation_params.to_idxs(obs_type="L")
+            max_index = np.argmax(self.obstacles[f"obstacle{idx2}"][3:6])
+            obstacle_offset[max_index] = (
+                self.obstacles[f"obstacle{idx2}"][3 + max_index] / 2
+            )
+
+            # Multiply by -1 depending on the direction of the leg
+            negative_axis_switch = bool((orientation.direction >> 1) & 1)
+            if not negative_axis_switch:
+                obstacle_offset[max_index] *= -1
+        elif obstacle_type == "planes":
+            # The plane's position is calculated from its center. place it just ahead
+            # of the goal position
+            # TODO: Doesn't work correctly
+            if orientation_params.axis == "x":
+                obstacle_offset[0] = 0.1
+            elif orientation_params.axis == "z":
+                obstacle_offset[2] = -0.1
+        elif obstacle_type == "bin":
+            # The bin's position is the center of the bin, set it as the goal
+            pass
+
+        # Return the obstacle position
+        return goal_position + obstacle_offset
+
+    def set_obstacle_pose(self, obs_type: str = "inline", position: np.ndarray = None):
         self.reset_obstacle_pose()
         params = OrientationParam().randomize()
+
+        # Use the goal position to determine the obstacle's position
+        if position is None:
+            position = self._get_obstacle_position_from_goal(
+                self.goal, obs_type, params
+            )
+
         if obs_type == "inline":
             self._move_obstacle_inline(0)
         elif obs_type == "L":
@@ -625,18 +677,21 @@ class ObstructedReach(Reach):
             # FIXME: Fix offset when flip == True
             params.flip = False
             idx1, idx2 = params.to_idxs("L")
-            self._move_obstacle_L(idx1, idx2, orientation=params)
+            self._move_obstacle_L(idx1, idx2, orientation=params, position=position)
         elif obs_type == "planes":
             # Place planes obstructing the end goal
             params.axis = np.random.choice(["x", "z"])
             params.flip = np.random.choice([True, False])
             idx1, idx2 = params.to_idxs("planes")
-            self._move_obstacle_planes(idx1, idx2, orientation=params)
+            self._move_obstacle_planes(
+                idx1, idx2, orientation=params, position=position
+            )
         elif obs_type == "bin":
             # Place bin-shaped obstacle
-            params.axis = np.random.choice(["x", "z"])
+            # params.axis = np.random.choice(["x", "z"])
+            params.axis = "z"
             idxs = params.to_idxs("bin")
-            self._move_obstacle_bin(idxs, orientation=params)
+            self._move_obstacle_bin(idxs, orientation=params, position=position)
 
     def reset(self) -> None:
         super().reset()
