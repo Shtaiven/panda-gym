@@ -626,7 +626,7 @@ class ObstructedReach(Reach):
         and orientation parameters and calculating a suitable position from them.
         """
         # Parse orientation into an OrientationParam object if needed
-        orientation = self._parse_orientation_params(orientation_params)
+        orientation_params = self._parse_orientation_params(orientation_params)
 
         # TODO: Get the obstacle's offset from the goal position
         obstacle_offset = np.zeros_like(goal_position)
@@ -642,7 +642,7 @@ class ObstructedReach(Reach):
             )
 
             # Multiply by -1 depending on the direction of the leg
-            negative_axis_switch = bool((orientation.direction >> 1) & 1)
+            negative_axis_switch = bool((orientation_params.direction >> 1) & 1)
             if not negative_axis_switch:
                 obstacle_offset[max_index] *= -1
         elif obstacle_type == "planes":
@@ -650,9 +650,9 @@ class ObstructedReach(Reach):
             # of the goal position
             # TODO: Doesn't work correctly
             if orientation_params.axis == "x":
-                obstacle_offset[0] = 0.1
+                obstacle_offset[0] = -0.1
             elif orientation_params.axis == "z":
-                obstacle_offset[2] = -0.1
+                obstacle_offset[2] = 0.1
         elif obstacle_type == "bin":
             # The bin's position is the center of the bin, set it as the goal
             pass
@@ -680,8 +680,10 @@ class ObstructedReach(Reach):
             self._move_obstacle_L(idx1, idx2, orientation=params, position=position)
         elif obs_type == "planes":
             # Place planes obstructing the end goal
-            params.axis = np.random.choice(["x", "z"])
-            params.flip = np.random.choice([True, False])
+            # params.axis = np.random.choice(["x", "z"])
+            params.axis = "x"
+            # params.flip = np.random.choice([True, False])
+            params.flip = False
             idx1, idx2 = params.to_idxs("planes")
             self._move_obstacle_planes(
                 idx1, idx2, orientation=params, position=position
