@@ -219,7 +219,7 @@ class ObstructedReach(Reach):
         max_obstacles=6,
         reward_weights=(5.0, 5.0, 1.0),
         visual_debug=False,
-        prev_distance_len=None,
+        prev_distance_len=50,
     ) -> None:
         # These parameters must be places before super().__init__ because they
         # are used in _create_scene, which is called by super().__init__
@@ -700,6 +700,8 @@ class ObstructedReach(Reach):
         self.start_ee_position = self.get_ee_position()
         self.set_obstacle_pose(obs_type=self.obstacle_type)
         self.prev_distances.clear()
+        initial_distance = distance(self.start_ee_position, self.goal)
+        self.prev_distances.extend([initial_distance]*self.prev_distances.maxlen)
 
     def _sort_obstacles(self):
         """Sort the obstacles by their position and dimension."""
@@ -717,7 +719,8 @@ class ObstructedReach(Reach):
         except ValueError as e:
             obs = np.array([-2.0, -2.0, -2.0, 0.0, 0.0, 0.0] * self.max_obstacles)
 
-        obs = np.concatenate([obs, self.goal], dtype=np.float32)
+        obs = np.concatenate([obs, self.goal])
+        obs = np.concatenate([obs, self.prev_distances], dtype=np.float32)
 
         return obs
 
