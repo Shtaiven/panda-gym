@@ -212,7 +212,7 @@ class ObstructedReach(Reach):
         get_ee_velocity,
         reward_type="pid",
         distance_threshold=0.01,
-        goal_range=0.6,
+        goal_range=0.3,
         goal_range_low=None,
         goal_range_high=None,
         obstacle_type="inline",
