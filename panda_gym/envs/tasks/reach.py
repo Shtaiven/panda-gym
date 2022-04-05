@@ -220,6 +220,7 @@ class ObstructedReach(Reach):
         reward_weights=(5.0, 5.0, 1.0),
         visual_debug=False,
         prev_distance_len=50,
+        aggregate_prev_distances=True,
     ) -> None:
         # These parameters must be places before super().__init__ because they
         # are used in _create_scene, which is called by super().__init__
@@ -235,6 +236,7 @@ class ObstructedReach(Reach):
         self.start_ee_position = self.get_ee_position()
         self.prev_distances = deque(maxlen=prev_distance_len)
         self.reward_weights = reward_weights
+        self.aggregate_prev_distances = aggregate_prev_distances
 
         # TODO: Extend the goal range to accommodate the new short table
         # goal_range_low and goal_range_high will supercede any value
@@ -720,7 +722,14 @@ class ObstructedReach(Reach):
             obs = np.array([-2.0, -2.0, -2.0, 0.0, 0.0, 0.0] * self.max_obstacles)
 
         obs = np.concatenate([obs, self.goal])
-        obs = np.concatenate([obs, self.prev_distances], dtype=np.float32)
+
+        if self.aggregate_prev_distances:
+            try:
+                obs = np.concatenate([obs, np.sum(self.prev_distances)])
+            except ValueError as e:
+                obs = np.concatenate([obs, [0.0,]])
+        else:
+            obs = np.concatenate([obs, self.prev_distances])
 
         return obs
 

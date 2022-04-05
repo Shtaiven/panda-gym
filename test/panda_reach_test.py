@@ -10,7 +10,7 @@ def main():
         control_type="joints",
         obstacle_type="bin",
         reward_type="pid",
-        visual_debug=True,
+        visual_debug=False,
     )
 
     for _ in range(10):

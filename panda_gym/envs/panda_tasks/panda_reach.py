@@ -27,6 +27,7 @@ class PandaReachEnv(RobotTaskEnv):
         reward_weights: Tuple[float] = (1.0, 1.0, 1.0),
         visual_debug: bool = False,
         prev_distance_len: int = 10,
+        aggregate_prev_distances=True,
     ) -> None:
         sim = PyBullet(render=render, n_substeps=n_substeps)
         robot = Panda(
@@ -44,5 +45,6 @@ class PandaReachEnv(RobotTaskEnv):
             reward_weights=reward_weights,
             prev_distance_len=prev_distance_len,
             visual_debug=visual_debug,
+            aggregate_prev_distances=aggregate_prev_distances,
         )
         super().__init__(robot, task)
