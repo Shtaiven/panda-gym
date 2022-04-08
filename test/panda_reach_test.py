@@ -3,14 +3,14 @@ import gym
 import panda_gym
 
 
-def main():
+def main(terminal_debug=False, visual_debug=False):
     env = gym.make(
         "PandaReach-v2",
         render=True,
         control_type="joints",
         obstacle_type="bin",
         reward_type="pid",
-        visual_debug=False,
+        visual_debug=visual_debug,
     )
 
     for _ in range(10):
@@ -18,6 +18,9 @@ def main():
 
         while not done:
             obs, reward, done, info = env.step(env.action_space.sample())
+            distance_to_goal = panda_gym.utils.distance(obs["desired_goal"], obs["achieved_goal"])
+            if terminal_debug:
+                print(f"distance to goal: {distance_to_goal}")
             time.sleep(0.1)
 
 

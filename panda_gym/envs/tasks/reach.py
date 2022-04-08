@@ -221,6 +221,7 @@ class ObstructedReach(Reach):
         visual_debug=False,
         prev_distance_len=50,
         aggregate_prev_distances=True,
+        sparse_term=0.0,
     ) -> None:
         # These parameters must be places before super().__init__ because they
         # are used in _create_scene, which is called by super().__init__
@@ -237,6 +238,7 @@ class ObstructedReach(Reach):
         self.prev_distances = deque(maxlen=prev_distance_len)
         self.reward_weights = reward_weights
         self.aggregate_prev_distances = aggregate_prev_distances
+        self.sparse_term = sparse_term
 
         # TODO: Extend the goal range to accommodate the new short table
         # goal_range_low and goal_range_high will supercede any value
@@ -703,7 +705,7 @@ class ObstructedReach(Reach):
         self.set_obstacle_pose(obs_type=self.obstacle_type)
         self.prev_distances.clear()
         initial_distance = distance(self.start_ee_position, self.goal)
-        self.prev_distances.extend([initial_distance]*self.prev_distances.maxlen)
+        self.prev_distances.extend([initial_distance] * self.prev_distances.maxlen)
 
     def _sort_obstacles(self):
         """Sort the obstacles by their position and dimension."""
@@ -727,7 +729,7 @@ class ObstructedReach(Reach):
             try:
                 obs = np.concatenate([obs, np.sum(self.prev_distances)])
             except ValueError as e:
-                obs = np.concatenate([obs, [0.0,]])
+                obs = np.concatenate([obs, [0.0]])
         else:
             obs = np.concatenate([obs, self.prev_distances])
 
@@ -753,8 +755,8 @@ class ObstructedReach(Reach):
 
         reward = sparse_reward
         if self.reward_type == "pid":
-            reward = pid_reward
+            reward = pid_reward + (sparse_reward * self.sparse_term)
         elif self.reward_type == "dense":
-            reward = -d
+            reward = -d + (sparse_reward * self.sparse_term)
 
         return float(reward)
