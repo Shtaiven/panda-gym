@@ -155,16 +155,23 @@ class PandaRandomJoints(Panda):
             Defaults to "ee".
     """
 
-    def __init__(self, *args, init_pose_type="random", **kwargs):
+    def __init__(self,
+        *args,
+        init_pose_type="random",
+        neutral_joint_values=None,
+        **kwargs,
+    ):
         super().__init__(*args, **kwargs)
         self.init_pose_type = init_pose_type
+        if neutral_joint_values is not None and len(neutral_joint_values) == 7:
+            self.neutral_joint_values = neutral_joint_values
         if init_pose_type == "random":
             self.set_joint_random()
+        else:
+            self.set_joint_neutral()
 
-    # TODO: add random target arm angles in a more clever way s.t. the arm is in a position to go around the box
     def set_joint_random(self) -> None:
         """Set the robot to a random joint configuration."""
-        # TODO: Try starting from the neutral pose and modifying based on that?
         randomized_joint_offsets = np.zeros_like(self.neutral_joint_values)
 
         # Select specific joints to randomize

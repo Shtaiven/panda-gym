@@ -1,4 +1,4 @@
-from typing import Any, Dict, Tuple
+from typing import Any, Dict, Optional, Tuple
 import numpy as np
 
 from panda_gym.envs.core import RobotTaskEnv
@@ -25,6 +25,7 @@ class PandaReachEnv(RobotTaskEnv):
         control_type: str = "joint",
         obstacle_type: str = "bin",
         init_pose_type: str = "random",
+        neutral_joint_values: Optional[np.ndarray] = None,
         n_substeps: int = 20,
         reward_weights: Tuple[float] = (5.0, 5.0, 1.0),
         sparse_term: float = 0.0,
@@ -40,6 +41,7 @@ class PandaReachEnv(RobotTaskEnv):
             base_position=np.array([-0.6, 0.0, 0.0]),
             control_type=control_type,
             init_pose_type=init_pose_type,
+            neutral_joint_values=neutral_joint_values,
         )
         task = ObstructedReach(
             sim,
