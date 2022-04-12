@@ -2,8 +2,8 @@ from typing import Any, Dict, Tuple
 import numpy as np
 
 from panda_gym.envs.core import RobotTaskEnv
-from panda_gym.envs.robots.panda import Panda
-from panda_gym.envs.tasks.reach import Reach, ObstructedReach
+from panda_gym.envs.robots.panda import Panda, PandaRandomJoints
+from panda_gym.envs.tasks.reach import ObstructedReach
 from panda_gym.pybullet import PyBullet
 from panda_gym.utils import distance
 
@@ -24,6 +24,7 @@ class PandaReachEnv(RobotTaskEnv):
         reward_type: str = "pid",
         control_type: str = "joint",
         obstacle_type: str = "bin",
+        init_pose_type: str = "random",
         n_substeps: int = 20,
         reward_weights: Tuple[float] = (5.0, 5.0, 1.0),
         sparse_term: float = 0.0,
@@ -33,11 +34,12 @@ class PandaReachEnv(RobotTaskEnv):
         print_distances=False,
     ) -> None:
         sim = PyBullet(render=render, n_substeps=n_substeps)
-        robot = Panda(
+        robot = PandaRandomJoints(
             sim,
             block_gripper=True,
             base_position=np.array([-0.6, 0.0, 0.0]),
             control_type=control_type,
+            init_pose_type=init_pose_type,
         )
         task = ObstructedReach(
             sim,

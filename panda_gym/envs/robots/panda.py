@@ -142,3 +142,42 @@ class Panda(PyBulletRobot):
     def get_ee_velocity(self) -> np.ndarray:
         """Returns the velocity of the end-effector as (vx, vy, vz)"""
         return self.get_link_velocity(self.ee_link)
+
+
+class PandaRandomJoints(Panda):
+    """Panda robot in PyBullet with random joint angles.
+
+    Args:
+        sim (PyBullet): Simulation instance.
+        block_gripper (bool, optional): Whether the gripper is blocked. Defaults to False.
+        base_position (np.ndarray, optional): Position of the base base of the robot, as (x, y, z). Defaults to (0, 0, 0).
+        control_type (str, optional): "ee" to control end-effector displacement or "joints" to control joint angles.
+            Defaults to "ee".
+    """
+
+    def __init__(self, *args, init_pose_type="random", **kwargs):
+        super().__init__(*args, **kwargs)
+        self.init_pose_type = init_pose_type
+        if init_pose_type == "random":
+            self.set_joint_random()
+
+    # TODO: add random target arm angles in a more clever way s.t. the arm is in a position to go around the box
+    def set_joint_random(self) -> None:
+        """Set the robot to a random joint configuration."""
+        # TODO: Try starting from the neutral pose and modifying based on that?
+        randomized_joint_offsets = np.zeros_like(self.neutral_joint_values)
+
+        # Select specific joints to randomize
+        joint_offset_max = np.pi/6
+        joint_offset_min = -np.pi/6
+        randomized_joints = [0, 1, 2, 3, 4, 5, 6]
+        for i in randomized_joints:
+            randomized_joint_offsets[i] = np.random.uniform(joint_offset_min, joint_offset_max)
+
+        self.set_joint_angles(self.neutral_joint_values + randomized_joint_offsets)
+
+    def reset(self) -> None:
+        if self.init_pose_type == "random":
+            self.set_joint_random()
+        else:
+            self.set_joint_neutral()

@@ -10,6 +10,7 @@ def main(terminal_debug=False, visual_debug=False):
         control_type="joints",
         obstacle_type="bin",
         reward_type="pid",
+        init_pose_type="random",
         visual_debug=visual_debug,
     )
 
