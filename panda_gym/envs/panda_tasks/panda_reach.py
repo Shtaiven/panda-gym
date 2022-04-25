@@ -25,6 +25,7 @@ class PandaReachEnv(RobotTaskEnv):
         control_type: str = "joint",
         obstacle_type: str = "bin",
         init_pose_type: str = "random",
+        goal_pose_type: str = "random",
         neutral_joint_values: Optional[np.ndarray] = None,
         n_substeps: int = 20,
         reward_weights: Tuple[float] = (5.0, 5.0, 1.0),
@@ -54,6 +55,7 @@ class PandaReachEnv(RobotTaskEnv):
             visual_debug=visual_debug,
             aggregate_prev_distances=aggregate_prev_distances,
             sparse_term=sparse_term,
+            goal_pose_type=goal_pose_type,
         )
         self.print_distances = print_distances
         super().__init__(robot, task)

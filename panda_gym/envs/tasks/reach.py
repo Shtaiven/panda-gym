@@ -222,6 +222,7 @@ class ObstructedReach(Reach):
         prev_distance_len=50,
         aggregate_prev_distances=True,
         sparse_term=0.0,
+        goal_pose_type="random",
     ) -> None:
         # These parameters must be places before super().__init__ because they
         # are used in _create_scene, which is called by super().__init__
@@ -239,6 +240,7 @@ class ObstructedReach(Reach):
         self.reward_weights = reward_weights
         self.aggregate_prev_distances = aggregate_prev_distances
         self.sparse_term = sparse_term
+        self.randomize_goal_pose = (goal_pose_type == "random")
 
         # TODO: Extend the goal range to accommodate the new short table
         # goal_range_low and goal_range_high will supercede any value
@@ -397,11 +399,12 @@ class ObstructedReach(Reach):
                 obstacle_sizes[idx] = np.array([bin_length, bin_width, bin_thickness])
         return obstacle_sizes
 
-    def _random_goal_position(self):
-        goal_range_diff = self.goal_range_high - self.goal_range_low
-        position = (np.random.rand(3) * goal_range_diff) + self.goal_range_low
-
-        return position
+    def _sample_goal(self) -> np.ndarray:
+        """Randomize goal."""
+        goal = (self.goal_range_high - self.goal_range_low)/2 + self.goal_range_low
+        if self.randomize_goal_pose:
+            goal = self.np_random.uniform(self.goal_range_low, self.goal_range_high)
+        return goal
 
     def _parse_orientation_params(self, orientation):
         """Parse a value into a possible OrientationParam."""
@@ -465,7 +468,7 @@ class ObstructedReach(Reach):
 
         # randomize position if None
         if position is None:
-            position = self._random_goal_position()
+            position = self._sample_goal()
 
         # Obstacle Enumerations
         #
@@ -563,7 +566,7 @@ class ObstructedReach(Reach):
 
         # randomize position if None
         if position is None:
-            position = self._random_goal_position()
+            position = self._sample_goal()
 
         # Parse orientation into an OrientationParam object if needed
         orientation = self._parse_orientation_params(orientation)
@@ -592,7 +595,7 @@ class ObstructedReach(Reach):
         """Create a bin-shaped obstacle by moving its constituent parts."""
         # randomize position if None
         if position is None:
-            position = self._random_goal_position()
+            position = self._sample_goal()
 
         # Parse orientation into an OrientationParam object if needed
         orientation = self._parse_orientation_params(orientation)
